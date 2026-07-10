@@ -4,6 +4,8 @@ A radiology training game. One image per case: click where you think the abnorma
 get scored on precision, and learn from the reveal. Built as a fast, fully client-side
 single-page app.
 
+**Live: [pinpoint-jade.vercel.app](https://pinpoint-jade.vercel.app)**
+
 Dark-first UI designed for reading-room conditions, with a light theme toggle.
 
 ## Features

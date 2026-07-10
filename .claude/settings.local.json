@@ -52,7 +52,20 @@
       "Bash(git config *)",
       "Bash(git credential *)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('login:', d.get\\('login'\\), '| scopes ok' if d.get\\('login'\\) else d.get\\('message'\\)\\)\")",
-      "Bash(time git add -A)"
+      "Bash(time git add -A)",
+      "Bash(git -c core.hooksPath=/dev/null commit -q -m 'Pinpoint: radiology spot-the-abnormality training game *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\('html_url'\\) or d.get\\('message'\\), d.get\\('errors',''\\)\\)\")",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(vercel link *)",
+      "Bash(vercel git *)",
+      "Bash(vercel deploy *)",
+      "Bash(vercel ls *)",
+      "Bash(curl -s -o /dev/null -w \"site: %{http_code}\\\\n\" https://pinpoint-jade.vercel.app/)",
+      "Bash(curl -s https://pinpoint-jade.vercel.app/)",
+      "Bash(curl -s -o /dev/null -w \"case image: %{http_code} \\(%{size_download} bytes\\)\\\\n\" https://pinpoint-jade.vercel.app/cases/pneumothorax.jpg)",
+      "Bash(git add *)",
+      "Bash(git -c core.hooksPath=/dev/null commit -q -m 'Add live URL to README, ignore Vercel artifacts *)"
     ]
   }
 }
