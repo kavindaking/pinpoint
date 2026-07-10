@@ -76,9 +76,11 @@ export function Study({
 
       <ImageViewer
         radCase={current}
-        overlay={(w, h) =>
+        overlay={(w, h, viewSlice) =>
           showRegions &&
-          current.regions.map((r) => {
+          current.regions
+            .filter((r) => (r.slice ?? 0) === viewSlice)
+            .map((r) => {
             const c = shapeCenter(r.shape);
             return (
               <g key={r.id}>

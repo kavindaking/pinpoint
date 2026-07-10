@@ -10,7 +10,7 @@ import {
   UploadSimple,
 } from "../components/icons";
 import type { BodyRegion, CaseRegion, Difficulty, Modality, RadCase, Shape, Subspecialty } from "../types";
-import { BODY_REGIONS, DIFFICULTIES, MODALITIES, SUBSPECIALTIES, inferSubspecialty } from "../types";
+import { BODY_REGIONS, DIFFICULTIES, MODALITIES, SUBSPECIALTIES, frameCount, inferSubspecialty } from "../types";
 import { ImageViewer, type ViewerPoint } from "../components/ImageViewer";
 import { ShapeSvg } from "../components/ShapeSvg";
 import { Button, Field, Panel, Select, inputClass } from "../components/ui";
@@ -44,12 +44,17 @@ export function Editor({
   const [subspecialty, setSubspecialty] = useState<Subspecialty>(existing?.subspecialty ?? "Chest");
   const [difficulty, setDifficulty] = useState<Difficulty>(existing?.difficulty ?? "medium");
   const [credit, setCredit] = useState(existing?.credit ?? "");
-  const [imageBlob, setImageBlob] = useState<Blob | null>(existing?.imageBlob ?? null);
+  // Newly uploaded frames; empty keeps whatever the existing case already has.
+  const [blobs, setBlobs] = useState<Blob[]>(
+    existing?.imageBlobs ?? (existing?.imageBlob ? [existing.imageBlob] : []),
+  );
   const [regions, setRegions] = useState<CaseRegion[]>(existing?.regions ?? []);
+  const [slice, setSlice] = useState(0);
 
   const [tool, setTool] = useState<Tool>("ellipse");
   const [draft, setDraft] = useState<Shape | null>(null);
   const [polyPoints, setPolyPoints] = useState<[number, number][]>([]);
+  const [jump, setJump] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dragAnchor = useRef<ViewerPoint | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -58,7 +63,9 @@ export function Editor({
   // image-related fields matter here; keeping the deps narrow avoids
   // re-mounting the viewer on every metadata keystroke.
   const previewCase: RadCase | null = useMemo(() => {
-    if (!imageBlob && !existing?.imageUrl) return null;
+    const hasNew = blobs.length > 0;
+    const hasExisting = existing?.imageUrl || existing?.imageUrls?.length;
+    if (!hasNew && !hasExisting) return null;
     return {
       id: existing?.id ?? "draft",
       title: "Draft",
@@ -68,14 +75,22 @@ export function Editor({
       subspecialty: "Chest",
       difficulty: "medium",
       regions: [],
-      imageUrl: imageBlob ? undefined : existing?.imageUrl,
-      imageBlob: imageBlob ?? undefined,
+      imageUrl: hasNew ? undefined : existing?.imageUrl,
+      imageUrls: hasNew ? undefined : existing?.imageUrls,
+      imageBlob: hasNew && blobs.length === 1 ? blobs[0] : undefined,
+      imageBlobs: hasNew && blobs.length > 1 ? blobs : undefined,
       createdAt: 0,
     };
-  }, [imageBlob, existing]);
+  }, [blobs, existing]);
+
+  const frames = previewCase ? frameCount(previewCase) : 1;
+  const isStack = frames > 1;
 
   const commitRegion = (shape: Shape) => {
-    setRegions((rs) => [...rs, { id: newRegionId(), label: `Finding ${rs.length + 1}`, shape }]);
+    setRegions((rs) => [
+      ...rs,
+      { id: newRegionId(), label: `Finding ${rs.length + 1}`, shape, slice },
+    ]);
   };
 
   const handleTap = (p: ViewerPoint) => {
@@ -133,16 +148,20 @@ export function Editor({
     },
   };
 
-  const handleFile = (file: File | undefined) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Please choose a PNG or JPG image.");
+  const handleFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const images = [...files].filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) {
+      setError("Please choose PNG or JPG images.");
       return;
     }
+    // Natural sort by filename so slice-01, slice-02, ... land in order.
+    images.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     setError(null);
-    setImageBlob(file);
+    setBlobs(images);
     setRegions([]);
     setPolyPoints([]);
+    setSlice(0);
   };
 
   const save = () => {
@@ -150,6 +169,7 @@ export function Editor({
     if (!title.trim()) return setError("Give the case a finding or diagnosis name.");
     if (regions.length === 0) return setError("Mark at least one abnormality region on the image.");
     setError(null);
+    const hasNew = blobs.length > 0;
     onSave({
       id: existing?.id ?? `case-${Date.now()}`,
       title: title.trim(),
@@ -160,8 +180,10 @@ export function Editor({
       subspecialty,
       difficulty,
       regions,
-      imageUrl: imageBlob ? undefined : existing?.imageUrl,
-      imageBlob: imageBlob ?? undefined,
+      imageUrl: hasNew ? undefined : existing?.imageUrl,
+      imageUrls: hasNew ? undefined : existing?.imageUrls,
+      imageBlob: hasNew && blobs.length === 1 ? blobs[0] : undefined,
+      imageBlobs: hasNew && blobs.length > 1 ? blobs : undefined,
       credit: credit.trim() || undefined,
       seed: existing?.seed,
       createdAt: existing?.createdAt ?? Date.now(),
@@ -216,7 +238,7 @@ export function Editor({
                   onClick={() => fileInput.current?.click()}
                 >
                   <UploadSimple size={15} />
-                  Replace image
+                  {isStack ? "Replace stack" : "Replace image"}
                 </Button>
               </div>
 
@@ -224,21 +246,25 @@ export function Editor({
                 radCase={previewCase}
                 onTap={handleTap}
                 onDrag={drag}
+                onSlice={setSlice}
+                jumpTo={jump}
                 cursor="crosshair"
                 maxHeight="62vh"
-                overlay={(w, h) => (
+                overlay={(w, h, viewSlice) => (
                   <>
-                    {regions.map((r) => (
-                      <ShapeSvg
-                        key={r.id}
-                        shape={r.shape}
-                        w={w}
-                        h={h}
-                        stroke="var(--accent)"
-                        fill="var(--accent)"
-                        fillOpacity={0.12}
-                      />
-                    ))}
+                    {regions
+                      .filter((r) => (r.slice ?? 0) === viewSlice)
+                      .map((r) => (
+                        <ShapeSvg
+                          key={r.id}
+                          shape={r.shape}
+                          w={w}
+                          h={h}
+                          stroke="var(--accent)"
+                          fill="var(--accent)"
+                          fillOpacity={0.12}
+                        />
+                      ))}
                     {draft && (
                       <ShapeSvg shape={draft} w={w} h={h} stroke="var(--accent-strong)" dashed />
                     )}
@@ -267,6 +293,7 @@ export function Editor({
                 )}
               />
               <p className="text-xs text-ink-faint">
+                {isStack && <span className="text-accent">On slice {slice + 1}. </span>}
                 {tool === "polygon"
                   ? polyPoints.length === 0
                     ? "Click to place the first vertex of the region outline."
@@ -274,6 +301,7 @@ export function Editor({
                   : tool === "point"
                     ? "Click the exact spot of the finding. Its hit radius comes from the scoring settings."
                     : "Click and drag to draw around the abnormality."}
+                {isStack && " Scroll to mark findings on other slices."}
               </p>
               {tool === "polygon" && polyPoints.length >= 3 && (
                 <div className="flex gap-2">
@@ -301,19 +329,23 @@ export function Editor({
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
-                handleFile(e.dataTransfer.files[0]);
+                handleFiles(e.dataTransfer.files);
               }}
             >
               <UploadSimple size={28} />
-              <span className="text-sm">Drop a de-identified PNG or JPG here, or click to browse</span>
+              <span className="max-w-xs text-center text-sm">
+                Drop a de-identified image here, or click to browse. Select multiple files for a
+                scrollable CT or MRI stack.
+              </span>
             </button>
           )}
           <input
             ref={fileInput}
             type="file"
             accept="image/png,image/jpeg,image/webp"
+            multiple
             className="hidden"
-            onChange={(e) => handleFile(e.target.files?.[0])}
+            onChange={(e) => handleFiles(e.target.files)}
           />
         </div>
 
@@ -422,7 +454,18 @@ export function Editor({
                       className={inputClass + " flex-1 !py-1.5"}
                       aria-label={`Label for region ${i + 1}`}
                     />
-                    <span className="text-xs text-ink-faint">{r.shape.kind}</span>
+                    {isStack ? (
+                      <button
+                        type="button"
+                        onClick={() => setJump(r.slice ?? 0)}
+                        className="cursor-pointer font-mono text-xs text-ink-faint transition-colors hover:text-accent"
+                        title="Jump to this slice"
+                      >
+                        sl {(r.slice ?? 0) + 1}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-ink-faint">{r.shape.kind}</span>
+                    )}
                     <button
                       type="button"
                       onClick={() => setRegions((rs) => rs.filter((x) => x.id !== r.id))}

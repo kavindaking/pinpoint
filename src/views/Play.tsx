@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Crosshair, Timer } from "../components/icons";
 import type { CaseOutcome, RadCase, RegionOutcome, ScoringSettings } from "../types";
+import { isStack } from "../types";
 import { caseBaseScore, evaluateClick, timeBonus } from "../lib/scoring";
 import { shapeCenter } from "../lib/geometry";
 import { ImageViewer, type ViewerPoint } from "../components/ImageViewer";
@@ -40,9 +41,11 @@ export function Play({
   const [timeLeft, setTimeLeft] = useState(settings.timerSeconds);
   const [timedOut, setTimedOut] = useState(false);
   const [scoreBumpKey, setScoreBumpKey] = useState(0);
+  const [revealSlice, setRevealSlice] = useState<number | null>(null);
 
   const current = cases[index];
   const timed = settings.timerSeconds > 0;
+  const stack = isStack(current);
   const foundIds = useMemo(() => new Set(outcomes.map((o) => o.regionId)), [outcomes]);
   const remaining = useMemo(
     () => current.regions.filter((r) => !foundIds.has(r.id)),
@@ -74,6 +77,11 @@ export function Play({
       setTimedOut(didTimeOut);
       setPhase("reveal");
       setScoreBumpKey((k) => k + 1);
+      // Jump the stack to the first finding so the reveal is visible.
+      const firstFound = finalOutcomes.find((o) => o.regionId);
+      const target =
+        current.regions.find((r) => r.id === firstFound?.regionId) ?? current.regions[0];
+      setRevealSlice(target?.slice ?? 0);
     },
     [current, settings, timeLeft],
   );
@@ -101,11 +109,10 @@ export function Play({
     if (timed && phase === "aim" && timeLeft <= 0) reveal(outcomes, true);
   }, [timed, phase, timeLeft, outcomes, reveal]);
 
-  const handleTap = (p: ViewerPoint) => {
+  const handleTap = (p: ViewerPoint, slice: number) => {
     if (phase !== "aim" || !imageSize) return;
-    const evaluation = evaluateClick(p, remaining, settings, imageSize.w, imageSize.h);
-    if (!evaluation) return;
-    const outcome: RegionOutcome = { ...evaluation, click: p };
+    const evaluation = evaluateClick(p, remaining, settings, imageSize.w, imageSize.h, slice);
+    const outcome: RegionOutcome = { ...evaluation, click: p, slice };
     const next = [...outcomes, outcome];
     setOutcomes(next);
     if (next.length >= current.regions.length) reveal(next, false);
@@ -126,6 +133,7 @@ export function Play({
     setImageSize(null);
     setTimeLeft(settings.timerSeconds);
     setTimedOut(false);
+    setRevealSlice(null);
   }, [phase, finished, index, cases.length, onFinish, settings.timerSeconds]);
 
   useEffect(() => {
@@ -191,43 +199,47 @@ export function Play({
         radCase={current}
         onImageSize={(w, h) => setImageSize({ w, h })}
         onTap={handleTap}
+        jumpTo={phase === "reveal" ? revealSlice : null}
         cursor={phase === "aim" ? "crosshair" : "default"}
-        overlay={(w, h) => (
+        overlay={(w, h, viewSlice) => (
           <>
-            {/* Revealed ground truth */}
+            {/* Revealed ground truth on the current slice */}
             {phase === "reveal" &&
-              current.regions.map((r) => {
-                const found = outcomes.find((o) => o.regionId === r.id);
-                const color = found ? RESULT_COLOR[found.result] : "var(--miss)";
-                const c = shapeCenter(r.shape);
-                return (
-                  <g key={r.id}>
-                    <ShapeSvg
-                      shape={r.shape}
-                      w={w}
-                      h={h}
-                      stroke={color}
-                      fill={color}
-                      className="region-reveal"
-                    />
-                    {r.label && (
-                      <text
-                        x={c.x * w}
-                        y={(c.y + (r.shape.kind === "point" ? 0.035 : 0)) * h}
+              current.regions
+                .filter((r) => (r.slice ?? 0) === viewSlice)
+                .map((r) => {
+                  const found = outcomes.find((o) => o.regionId === r.id);
+                  const color = found ? RESULT_COLOR[found.result] : "var(--miss)";
+                  const c = shapeCenter(r.shape);
+                  return (
+                    <g key={r.id}>
+                      <ShapeSvg
+                        shape={r.shape}
+                        w={w}
+                        h={h}
+                        stroke={color}
                         fill={color}
-                        fontSize={Math.max(13, 0.016 * Math.hypot(w, h))}
-                        textAnchor="middle"
-                        className="rise-in"
-                        style={{ fontFamily: "Geist Variable, sans-serif", paintOrder: "stroke", stroke: "rgba(0,0,0,0.65)", strokeWidth: 3 }}
-                      >
-                        {r.label}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-            {/* Click markers */}
+                        className="region-reveal"
+                      />
+                      {r.label && (
+                        <text
+                          x={c.x * w}
+                          y={(c.y + (r.shape.kind === "point" ? 0.035 : 0)) * h}
+                          fill={color}
+                          fontSize={Math.max(13, 0.016 * Math.hypot(w, h))}
+                          textAnchor="middle"
+                          className="rise-in"
+                          style={{ fontFamily: "Geist Variable, sans-serif", paintOrder: "stroke", stroke: "rgba(0,0,0,0.65)", strokeWidth: 3 }}
+                        >
+                          {r.label}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+            {/* Click markers placed on their own slice */}
             {outcomes.map((o, i) => {
+              if (o.slice !== viewSlice) return null;
               const color = phase === "reveal" ? RESULT_COLOR[o.result] : "var(--accent)";
               const x = o.click.x * w;
               const y = o.click.y * h;
@@ -252,7 +264,9 @@ export function Play({
       {phase === "aim" ? (
         <p className="flex items-center justify-center gap-2 text-sm text-ink-faint">
           <Crosshair size={16} />
-          Click where you think the abnormality is
+          {stack
+            ? "Scroll through the slices, then click the abnormality"
+            : "Click where you think the abnormality is"}
         </p>
       ) : (
         caseResult && (

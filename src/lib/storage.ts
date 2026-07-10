@@ -132,16 +132,20 @@ export function clearHistory(): void {
 
 /* ---- import / export ------------------------------------------------- */
 
-interface ExportedCase extends Omit<RadCase, "imageBlob"> {
-  imageData?: string; // data URL
+interface ExportedCase extends Omit<RadCase, "imageBlob" | "imageBlobs"> {
+  imageData?: string; // single-image data URL
+  imageDatas?: string[]; // stack slice data URLs
 }
 
 export async function exportCases(cases: RadCase[]): Promise<string> {
   const out: ExportedCase[] = [];
   for (const c of cases) {
-    const { imageBlob, ...rest } = c;
+    const { imageBlob, imageBlobs, ...rest } = c;
     const entry: ExportedCase = { ...rest };
     if (imageBlob) entry.imageData = await blobToDataUrl(imageBlob);
+    if (imageBlobs?.length) {
+      entry.imageDatas = await Promise.all(imageBlobs.map(blobToDataUrl));
+    }
     out.push(entry);
   }
   return JSON.stringify({ app: "pinpoint", version: 1, cases: out }, null, 2);
@@ -154,11 +158,14 @@ export async function importCases(json: string): Promise<number> {
   }
   let count = 0;
   for (const entry of parsed.cases as ExportedCase[]) {
-    const { imageData, ...rest } = entry;
+    const { imageData, imageDatas, ...rest } = entry;
     if (!rest.id || !rest.title || !Array.isArray(rest.regions)) continue;
     const c: RadCase = { ...rest };
     if (imageData) c.imageBlob = dataUrlToBlob(imageData);
-    if (!c.imageBlob && !c.imageUrl) continue;
+    if (imageDatas?.length) c.imageBlobs = imageDatas.map(dataUrlToBlob);
+    // Imported cases are personal, never curated.
+    delete c.seed;
+    if (!c.imageBlob && !c.imageUrl && !c.imageBlobs?.length && !c.imageUrls?.length) continue;
     await saveCase(c);
     count++;
   }

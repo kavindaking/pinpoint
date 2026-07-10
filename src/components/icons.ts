@@ -25,6 +25,7 @@ export { PencilSimple } from "@phosphor-icons/react/dist/csr/PencilSimple";
 export { Play } from "@phosphor-icons/react/dist/csr/Play";
 export { Polygon } from "@phosphor-icons/react/dist/csr/Polygon";
 export { SlidersHorizontal } from "@phosphor-icons/react/dist/csr/SlidersHorizontal";
+export { Stack } from "@phosphor-icons/react/dist/csr/Stack";
 export { Square } from "@phosphor-icons/react/dist/csr/Square";
 export { Sun } from "@phosphor-icons/react/dist/csr/Sun";
 export { Timer } from "@phosphor-icons/react/dist/csr/Timer";

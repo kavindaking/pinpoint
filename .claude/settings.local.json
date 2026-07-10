@@ -65,7 +65,12 @@
       "Bash(curl -s https://pinpoint-jade.vercel.app/)",
       "Bash(curl -s -o /dev/null -w \"case image: %{http_code} \\(%{size_download} bytes\\)\\\\n\" https://pinpoint-jade.vercel.app/cases/pneumothorax.jpg)",
       "Bash(git add *)",
-      "Bash(git -c core.hooksPath=/dev/null commit -q -m 'Add live URL to README, ignore Vercel artifacts *)"
+      "Bash(git -c core.hooksPath=/dev/null commit -q -m 'Add live URL to README, ignore Vercel artifacts *)",
+      "Bash(curl -s -A RadSpotter/1.0 'https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo&iiprop=url|extmetadata|size&iiurlwidth=700&format=json&titles=__TRACKED_VAR__' -o brain.json)",
+      "Bash(sort -t- -k2 -n)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"http://localhost:5173/src/main.tsx\")",
+      "Bash(time curl -s -o /dev/null -w \"css:%{http_code} %{size_download}B\\\\n\" \"http://localhost:5173/src/index.css\")",
+      "Bash(git -c core.hooksPath=/dev/null commit -q -m 'Add Library/Personal case split and scrollable CT/MRI stacks *)"
     ]
   }
 }

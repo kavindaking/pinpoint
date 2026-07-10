@@ -24,9 +24,10 @@ type Route =
   | { view: "home" }
   | { view: "play"; cases: RadCase[]; filters: RoundFilters }
   | { view: "summary"; outcomes: CaseOutcome[]; filters: RoundFilters }
-  | { view: "cases" }
+  | { view: "library" }
+  | { view: "personal" }
   | { view: "editor"; existing: RadCase | null }
-  | { view: "study"; startAt: number }
+  | { view: "study"; startAt: number; back: "library" | "personal" }
   | { view: "stats" };
 
 type Theme = "dark" | "light";
@@ -49,6 +50,7 @@ function useTheme(): [Theme, () => void] {
 function pickRound(cases: RadCase[], f: RoundFilters): RadCase[] {
   const pool = cases.filter(
     (c) =>
+      (f.source === "all" || (f.source === "library" ? c.seed : !c.seed)) &&
       (f.modalities.length === 0 || f.modalities.includes(c.modality)) &&
       (f.subspecialties.length === 0 || f.subspecialties.includes(c.subspecialty)) &&
       (f.difficulties.length === 0 || f.difficulties.includes(c.difficulty)),
@@ -113,17 +115,20 @@ export default function App() {
     () =>
       [
         ["home", "Play"],
-        ["cases", "Cases"],
+        ["library", "Library"],
+        ["personal", "My cases"],
         ["stats", "Stats"],
       ] as const,
     [],
   );
   const activeNav =
-    route.view === "editor" || route.view === "study"
-      ? "cases"
-      : route.view === "play" || route.view === "summary"
-        ? "home"
-        : route.view;
+    route.view === "editor"
+      ? "personal"
+      : route.view === "study"
+        ? route.back
+        : route.view === "play" || route.view === "summary"
+          ? "home"
+          : route.view;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -170,7 +175,7 @@ export default function App() {
         {route.view === "landing" && (
           <Landing
             onPlay={() => setRoute({ view: "home" })}
-            onBrowse={() => setRoute({ view: "cases" })}
+            onBrowse={() => setRoute({ view: "library" })}
           />
         )}
         {route.view === "home" && (
@@ -204,8 +209,9 @@ export default function App() {
             onHome={() => setRoute({ view: "home" })}
           />
         )}
-        {route.view === "cases" && (
+        {(route.view === "library" || route.view === "personal") && (
           <Cases
+            scope={route.view}
             cases={cases}
             onNew={() => setRoute({ view: "editor", existing: null })}
             onEdit={(c) => setRoute({ view: "editor", existing: c })}
@@ -213,7 +219,11 @@ export default function App() {
               await deleteCase(c);
               refreshCases();
             }}
-            onStudy={(c) => setRoute({ view: "study", startAt: cases.indexOf(c) })}
+            onStudy={(c) => {
+              const back = route.view === "library" ? "library" : "personal";
+              const list = cases.filter((x) => (back === "library" ? x.seed : !x.seed));
+              setRoute({ view: "study", startAt: Math.max(0, list.indexOf(c)), back });
+            }}
             onChanged={refreshCases}
           />
         )}
@@ -223,13 +233,17 @@ export default function App() {
             onSave={async (c) => {
               await saveCase(c);
               refreshCases();
-              setRoute({ view: "cases" });
+              setRoute({ view: "personal" });
             }}
-            onCancel={() => setRoute({ view: "cases" })}
+            onCancel={() => setRoute({ view: "personal" })}
           />
         )}
         {route.view === "study" && (
-          <Study cases={cases} startAt={route.startAt} onExit={() => setRoute({ view: "cases" })} />
+          <Study
+            cases={cases.filter((x) => (route.back === "library" ? x.seed : !x.seed))}
+            startAt={route.startAt}
+            onExit={() => setRoute({ view: route.back })}
+          />
         )}
         {route.view === "stats" && (
           <Stats history={history} onChanged={() => setHistory(loadHistory())} />

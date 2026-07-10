@@ -18,12 +18,20 @@ Dark-first UI designed for reading-room conditions, with a light theme toggle.
 - **Precision scoring**: full points inside the ground-truth region, partial points scaled
   by distance for close misses, zero beyond a configurable threshold. All thresholds are
   adjustable from the home screen (Scoring panel).
-- **Case builder**: add cases from any de-identified PNG/JPG. Draw the ground truth
-  directly on the image with ellipse, box, freehand polygon, or point tools; multiple
-  regions per case are supported. Metadata: subspecialty, modality, body region,
-  difficulty, clinical stem, teaching point, image credit.
-- **Case library filters**: filter the collection by subspecialty, modality, and
-  difficulty, or search by finding name.
+- **Two case pools**: a curated **Library** of bundled, openly licensed teaching cases
+  (read-only, always restorable) and **My cases** for your own uploads, kept only in your
+  browser. Rounds can draw from either pool or both.
+- **Scrollable CT/MRI stacks**: cases can hold a multi-slice image stack. Scroll with the
+  mouse wheel or the side slider to find the right level, then click. Ground truth is
+  per-slice, scoring is slice-aware (a click on the wrong slice misses), and the reveal
+  jumps to the slice with the finding. A curated normal-brain CT stack ships as an example.
+- **Case builder**: add cases from any de-identified PNG/JPG. Upload a single image, or
+  several files at once for a scrollable stack. Draw the ground truth directly on the image
+  with ellipse, box, freehand polygon, or point tools; multiple regions per case, on any
+  slice, are supported. Metadata: subspecialty, modality, body region, difficulty, clinical
+  stem, teaching point, image credit.
+- **Case library filters**: filter each pool by subspecialty, modality, and difficulty, or
+  search by finding name.
 - **Study mode**: browse any case with the answer overlaid, no scoring.
 - **Stats**: local score history, hit rate overall and by modality.
 - **Import / export**: cases (including uploaded images) round-trip through a single JSON
@@ -80,9 +88,13 @@ Only upload images that are de-identified and that you have the right to use.
   image diagonal so scoring is aspect- and resolution-independent.
 - **Viewer** (`src/components/ImageViewer.tsx`): the container is sized to the image's
   exact aspect ratio, and an SVG overlay shares that box with a natural-pixel `viewBox`,
-  so pointer coordinates map 1:1 to normalized image coordinates at any display size.
-- **DICOM**: out of scope for now; the viewer accepts standard PNG/JPG exports. Native
-  `.dcm` with windowing/leveling would slot in behind the viewer via cornerstone3D.
+  so pointer coordinates map 1:1 to normalized image coordinates at any display size. A
+  multi-frame case resolves to a list of slice URLs/Blobs; wheel and slider events change
+  the active slice, and that slice flows through every pointer and overlay callback so
+  scoring and drawing stay slice-aware.
+- **DICOM**: out of scope for now; the viewer accepts standard PNG/JPG exports and treats a
+  stack as an ordered set of slice images. Native `.dcm` with windowing/leveling would slot
+  in behind the viewer via cornerstone3D.
 
 ## Bundled case images
 
@@ -96,8 +108,11 @@ All seed images are de-identified, openly licensed teaching files from Wikimedia
 | Epidural hematoma | [Traumatic acute epidual hematoma.jpg](https://commons.wikimedia.org/wiki/File:Traumatic_acute_epidual_hematoma.jpg) | Jpogi | CC BY-SA 3.0 |
 | Shoulder dislocation | [Shoulder dislocation, anteroposterior before reduction.jpg](https://commons.wikimedia.org/wiki/File:Shoulder_dislocation,_anteroposterior_before_reduction.jpg) | Mikael Häggström, M.D. | CC0 |
 | Hip fracture | [X-ray of a comminuted hip fracture.jpg](https://commons.wikimedia.org/wiki/File:X-ray_of_a_comminuted_hip_fracture.jpg) | Memon, Patel and Juva | CC BY 4.0 |
+| Lateral ventricles (CT stack) | [CT of a normal brain, axial 14-23.png](https://commons.wikimedia.org/wiki/File:CT_of_a_normal_brain,_axial_16.png) | Mikael Häggström, M.D. | CC0 |
 
-Ground-truth regions and teaching points were authored for this app and are approximate;
+The CT stack is ten consecutive axial slices, cropped to the axial panel and framed as a
+cross-sectional anatomy localization task (not a pathology case). Ground-truth regions and
+teaching points were authored for this app and are approximate;
 they are for training the eye, not for clinical reference.
 
 ## Disclaimer

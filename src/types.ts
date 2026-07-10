@@ -58,6 +58,8 @@ export interface CaseRegion {
   id: string;
   label?: string;
   shape: Shape;
+  /** Slice this finding lives on in a multi-slice stack; 0 for single images. */
+  slice?: number;
 }
 
 export interface RadCase {
@@ -70,13 +72,29 @@ export interface RadCase {
   subspecialty: Subspecialty;
   difficulty: Difficulty;
   regions: CaseRegion[];
-  /** Static asset path for bundled seed cases. */
+  /** Static asset path for a single-image bundled seed case. */
   imageUrl?: string;
-  /** Uploaded image for user-created cases; lives in IndexedDB. */
+  /** Uploaded single image for a user-created case; lives in IndexedDB. */
   imageBlob?: Blob;
+  /** Ordered asset paths for a bundled multi-slice stack (CT/MRI). */
+  imageUrls?: string[];
+  /** Ordered uploaded slices for a user-created stack; live in IndexedDB. */
+  imageBlobs?: Blob[];
   credit?: string;
+  /** Curated bundled case. Absent/false means a user's personal case. */
   seed?: boolean;
   createdAt: number;
+}
+
+/** Number of slices in a case; 1 for single-image cases. */
+export function frameCount(c: RadCase): number {
+  if (c.imageBlobs?.length) return c.imageBlobs.length;
+  if (c.imageUrls?.length) return c.imageUrls.length;
+  return 1;
+}
+
+export function isStack(c: RadCase): boolean {
+  return frameCount(c) > 1;
 }
 
 export type ClickResult = "hit" | "near" | "miss";
@@ -88,6 +106,8 @@ export interface RegionOutcome {
   /** Distance from the click to the region edge, as a fraction of image diagonal. */
   distance: number;
   click: { x: number; y: number };
+  /** Slice the click landed on, for placing the marker in a stack. */
+  slice: number;
 }
 
 export interface CaseOutcome {
@@ -138,7 +158,11 @@ export const DEFAULT_SCORING: ScoringSettings = {
   timerBonusMax: 50,
 };
 
+/** Which pool a round draws from: everything, curated only, or personal only. */
+export type CaseSource = "all" | "library" | "personal";
+
 export interface RoundFilters {
+  source: CaseSource;
   modalities: Modality[];
   subspecialties: Subspecialty[];
   difficulties: Difficulty[];

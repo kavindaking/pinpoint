@@ -6,28 +6,41 @@ import {
   FilmStrip,
   MagnifyingGlass,
   PencilSimple,
+  Stack,
   Trash,
   UploadSimple,
 } from "../components/icons";
-import type { RadCase, Subspecialty } from "../types";
-import { DIFFICULTIES, MODALITIES, SUBSPECIALTIES } from "../types";
+import type { CaseSource, RadCase, Subspecialty } from "../types";
+import { DIFFICULTIES, MODALITIES, SUBSPECIALTIES, frameCount, isStack } from "../types";
 import { exportCases, importCases, restoreSeeds } from "../lib/storage";
 import { Button, Chip, EmptyState, Panel, Select, inputClass } from "../components/ui";
 
 function CaseThumb({ radCase }: { radCase: RadCase }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
+    // First frame stands in for the whole case.
+    if (radCase.imageBlobs?.length) {
+      const url = URL.createObjectURL(radCase.imageBlobs[0]);
+      setSrc(url);
+      return () => URL.revokeObjectURL(url);
+    }
     if (radCase.imageBlob) {
       const url = URL.createObjectURL(radCase.imageBlob);
       setSrc(url);
       return () => URL.revokeObjectURL(url);
     }
-    setSrc(radCase.imageUrl ?? null);
+    setSrc(radCase.imageUrls?.[0] ?? radCase.imageUrl ?? null);
   }, [radCase]);
   return (
-    <div className="aspect-video w-full overflow-hidden rounded-t-(--radius-panel) bg-black">
+    <div className="relative aspect-video w-full overflow-hidden rounded-t-(--radius-panel) bg-black">
       {src && (
         <img src={src} alt="" loading="lazy" className="h-full w-full object-cover opacity-90" />
+      )}
+      {isStack(radCase) && (
+        <span className="absolute right-2 top-2 flex items-center gap-1 rounded-(--radius-ctl) bg-black/60 px-1.5 py-0.5 font-mono text-[11px] text-white/90">
+          <Stack size={12} />
+          {frameCount(radCase)}
+        </span>
       )}
     </div>
   );
@@ -40,6 +53,7 @@ const DIFF_COLOR: Record<string, string> = {
 };
 
 export function Cases({
+  scope,
   cases,
   onNew,
   onEdit,
@@ -47,6 +61,7 @@ export function Cases({
   onStudy,
   onChanged,
 }: {
+  scope: Extract<CaseSource, "library" | "personal">;
   cases: RadCase[];
   onNew: () => void;
   onEdit: (c: RadCase) => void;
@@ -54,6 +69,7 @@ export function Cases({
   onStudy: (c: RadCase) => void;
   onChanged: () => void;
 }) {
+  const isLibrary = scope === "library";
   const [confirming, setConfirming] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pickedSubs, setPickedSubs] = useState<Subspecialty[]>([]);
@@ -62,31 +78,38 @@ export function Cases({
   const [query, setQuery] = useState("");
   const importInput = useRef<HTMLInputElement>(null);
 
+  // Curated (bundled) cases live in the Library; the user's own uploads
+  // live in Personal.
+  const scoped = useMemo(
+    () => cases.filter((c) => (isLibrary ? c.seed : !c.seed)),
+    [cases, isLibrary],
+  );
+
   const subspecialties = useMemo(
-    () => SUBSPECIALTIES.filter((s) => cases.some((c) => c.subspecialty === s)),
-    [cases],
+    () => SUBSPECIALTIES.filter((s) => scoped.some((c) => c.subspecialty === s)),
+    [scoped],
   );
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return cases.filter(
+    return scoped.filter(
       (c) =>
         (pickedSubs.length === 0 || pickedSubs.includes(c.subspecialty)) &&
         (modality === "all" || c.modality === modality) &&
         (difficulty === "all" || c.difficulty === difficulty) &&
         (q === "" || c.title.toLowerCase().includes(q)),
     );
-  }, [cases, pickedSubs, modality, difficulty, query]);
+  }, [scoped, pickedSubs, modality, difficulty, query]);
 
   const filtersActive =
     pickedSubs.length > 0 || modality !== "all" || difficulty !== "all" || query.trim() !== "";
 
   const doExport = async () => {
-    const json = await exportCases(cases);
+    const json = await exportCases(scoped);
     const blob = new Blob([json], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "pinpoint-cases.json";
+    a.download = isLibrary ? "pinpoint-library.json" : "pinpoint-my-cases.json";
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -104,37 +127,49 @@ export function Cases({
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Case library</h1>
+      <div className="mb-1 flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {isLibrary ? "Case library" : "My cases"}
+        </h1>
         <span className="font-mono text-sm text-ink-faint">
-          {filtersActive ? `${visible.length} of ${cases.length}` : cases.length}
+          {filtersActive ? `${visible.length} of ${scoped.length}` : scoped.length}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {notice && <span className="mr-2 text-sm text-ink-dim">{notice}</span>}
-          <Button onClick={() => importInput.current?.click()}>
-            <UploadSimple size={15} />
-            Import
-          </Button>
-          <Button onClick={doExport} disabled={cases.length === 0}>
+          {!isLibrary && (
+            <Button onClick={() => importInput.current?.click()}>
+              <UploadSimple size={15} />
+              Import
+            </Button>
+          )}
+          <Button onClick={doExport} disabled={scoped.length === 0}>
             <DownloadSimple size={15} />
             Export
           </Button>
-          <Button
-            onClick={async () => {
-              await restoreSeeds();
-              setNotice("Bundled cases restored.");
-              onChanged();
-            }}
-          >
-            <ArrowCounterClockwise size={15} />
-            Restore bundled
-          </Button>
-          <Button variant="primary" onClick={onNew}>
-            <FilePlus size={15} />
-            New case
-          </Button>
+          {isLibrary ? (
+            <Button
+              onClick={async () => {
+                await restoreSeeds();
+                setNotice("Bundled cases restored.");
+                onChanged();
+              }}
+            >
+              <ArrowCounterClockwise size={15} />
+              Restore bundled
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={onNew}>
+              <FilePlus size={15} />
+              New case
+            </Button>
+          )}
         </div>
       </div>
+      <p className="mb-6 text-sm text-ink-dim">
+        {isLibrary
+          ? "Curated, openly licensed teaching cases. Play or study them; they stay put."
+          : "Your own uploads for personalised study, stored only in this browser."}
+      </p>
       <input
         ref={importInput}
         type="file"
@@ -146,7 +181,7 @@ export function Cases({
         }}
       />
 
-      {cases.length > 0 && (
+      {scoped.length > 0 && (
         <div className="mb-6 flex flex-wrap items-center gap-2 rounded-(--radius-panel) border border-line bg-surface p-3">
           {subspecialties.map((s) => (
             <Chip
@@ -188,18 +223,38 @@ export function Cases({
         </div>
       )}
 
-      {cases.length === 0 ? (
-        <EmptyState
-          icon={<FilmStrip size={40} />}
-          title="No cases yet"
-          body="Create a case from any de-identified PNG or JPG, or restore the bundled teaching set."
-          action={
-            <Button variant="primary" onClick={onNew}>
-              <FilePlus size={15} />
-              New case
-            </Button>
-          }
-        />
+      {scoped.length === 0 ? (
+        isLibrary ? (
+          <EmptyState
+            icon={<FilmStrip size={40} />}
+            title="The library is empty"
+            body="Restore the bundled teaching set to bring the curated cases back."
+            action={
+              <Button
+                variant="primary"
+                onClick={async () => {
+                  await restoreSeeds();
+                  onChanged();
+                }}
+              >
+                <ArrowCounterClockwise size={15} />
+                Restore bundled
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={<FilmStrip size={40} />}
+            title="No personal cases yet"
+            body="Upload your own de-identified images to build a personalised study set. Single images, or several files for a scrollable CT/MRI stack."
+            action={
+              <Button variant="primary" onClick={onNew}>
+                <FilePlus size={15} />
+                New case
+              </Button>
+            }
+          />
+        )
       ) : visible.length === 0 ? (
         <EmptyState
           icon={<FilmStrip size={40} />}
@@ -251,28 +306,31 @@ export function Cases({
                   <Button className="!px-2.5 !py-1 !text-xs" onClick={() => onStudy(c)}>
                     Study
                   </Button>
-                  <Button className="!px-2.5 !py-1 !text-xs" onClick={() => onEdit(c)}>
-                    <PencilSimple size={13} />
-                    Edit
-                  </Button>
-                  {confirming === c.id ? (
-                    <span className="ml-auto flex items-center gap-1">
-                      <Button variant="danger" className="!px-2.5 !py-1 !text-xs" onClick={() => onDelete(c)}>
-                        Confirm delete
-                      </Button>
-                      <Button className="!px-2.5 !py-1 !text-xs" onClick={() => setConfirming(null)}>
-                        Keep
-                      </Button>
-                    </span>
-                  ) : (
-                    <Button
-                      variant="danger"
-                      className="ml-auto !border-transparent !px-2.5 !py-1 !text-xs opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                      onClick={() => setConfirming(c.id)}
-                    >
-                      <Trash size={13} />
+                  {!isLibrary && (
+                    <Button className="!px-2.5 !py-1 !text-xs" onClick={() => onEdit(c)}>
+                      <PencilSimple size={13} />
+                      Edit
                     </Button>
                   )}
+                  {!isLibrary &&
+                    (confirming === c.id ? (
+                      <span className="ml-auto flex items-center gap-1">
+                        <Button variant="danger" className="!px-2.5 !py-1 !text-xs" onClick={() => onDelete(c)}>
+                          Confirm delete
+                        </Button>
+                        <Button className="!px-2.5 !py-1 !text-xs" onClick={() => setConfirming(null)}>
+                          Keep
+                        </Button>
+                      </span>
+                    ) : (
+                      <Button
+                        variant="danger"
+                        className="ml-auto !border-transparent !px-2.5 !py-1 !text-xs opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                        onClick={() => setConfirming(c.id)}
+                      >
+                        <Trash size={13} />
+                      </Button>
+                    ))}
                 </div>
               </div>
             </Panel>

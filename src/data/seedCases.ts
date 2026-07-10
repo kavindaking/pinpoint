@@ -143,4 +143,38 @@ export const SEED_CASES: RadCase[] = [
     seed: true,
     createdAt: 6,
   },
+  {
+    id: "seed-ct-ventricles",
+    title: "Lateral ventricles",
+    stem: "Normal head CT. Scroll through the stack and click the lateral ventricles.",
+    explanation:
+      "The lateral ventricles are the paired CSF-filled spaces near the midline; the frontal horns form the symmetric butterfly at this level. A cross-sectional anatomy stack, not a pathology case: the point is learning to scroll to the right level and localize.",
+    modality: "CT",
+    bodyRegion: "Head",
+    subspecialty: "Neuro",
+    difficulty: "medium",
+    regions: [
+      {
+        id: "r1",
+        label: "Lateral ventricles",
+        shape: { kind: "ellipse", cx: 0.5, cy: 0.45, rx: 0.14, ry: 0.13 },
+        slice: 2,
+      },
+    ],
+    imageUrls: [
+      "/cases/brain/slice-14.png",
+      "/cases/brain/slice-15.png",
+      "/cases/brain/slice-16.png",
+      "/cases/brain/slice-17.png",
+      "/cases/brain/slice-18.png",
+      "/cases/brain/slice-19.png",
+      "/cases/brain/slice-20.png",
+      "/cases/brain/slice-21.png",
+      "/cases/brain/slice-22.png",
+      "/cases/brain/slice-23.png",
+    ],
+    credit: "Mikael Häggström, M.D., Wikimedia Commons, CC0",
+    seed: true,
+    createdAt: 7,
+  },
 ];

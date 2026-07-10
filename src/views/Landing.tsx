@@ -33,7 +33,7 @@ function HeroDemo() {
   const handleTap = (p: ViewerPoint) => {
     if (outcome || !size) return;
     const evaluation = evaluateClick(p, demoCase.regions, DEFAULT_SCORING, size.w, size.h);
-    if (evaluation) setOutcome({ ...evaluation, click: p });
+    setOutcome({ ...evaluation, click: p, slice: 0 });
   };
 
   return (
