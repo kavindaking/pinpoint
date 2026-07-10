@@ -1,0 +1,218 @@
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "tailwindcss";
+
+/*
+  Design tokens. Dark is the default theme (radiology reading-room);
+  light is opt-in via the header toggle.
+
+  Corner-radius rule for the whole app:
+    controls (buttons, inputs, chips) = 8px, panels/cards = 12px.
+*/
+:root,
+:root[data-theme="dark"] {
+  --bg: #0c0f12;
+  --surface: #14181d;
+  --surface-2: #1b2129;
+  --border: #262d36;
+  --border-strong: #39424d;
+  --text: #e9edf0;
+  --text-dim: #9aa5ae;
+  --text-faint: #6a747e;
+  --accent: #56c2bc;
+  --accent-strong: #7ad6d0;
+  --accent-soft: rgba(86, 194, 188, 0.14);
+  --hit: #5bc98a;
+  --hit-soft: rgba(91, 201, 138, 0.15);
+  --near: #d9a54e;
+  --near-soft: rgba(217, 165, 78, 0.15);
+  --miss: #d46570;
+  --miss-soft: rgba(212, 101, 112, 0.15);
+  --overlay-scrim: rgba(6, 8, 10, 0.72);
+  --shadow: 0 10px 30px rgba(4, 6, 8, 0.45);
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f2f4f5;
+  --surface: #fdfdfd;
+  --surface-2: #e9ecee;
+  --border: #d8dde1;
+  --border-strong: #b9c1c8;
+  --text: #171c21;
+  --text-dim: #57626b;
+  --text-faint: #8b949c;
+  --accent: #178f88;
+  --accent-strong: #0f7a74;
+  --accent-soft: rgba(23, 143, 136, 0.12);
+  --hit: #1e8f52;
+  --hit-soft: rgba(30, 143, 82, 0.13);
+  --near: #9a6b13;
+  --near-soft: rgba(154, 107, 19, 0.13);
+  --miss: #b3424e;
+  --miss-soft: rgba(179, 66, 78, 0.12);
+  --overlay-scrim: rgba(23, 28, 33, 0.45);
+  --shadow: 0 10px 30px rgba(23, 28, 33, 0.12);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--text);
+  --color-ink-dim: var(--text-dim);
+  --color-ink-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-hit: var(--hit);
+  --color-hit-soft: var(--hit-soft);
+  --color-near: var(--near);
+  --color-near-soft: var(--near-soft);
+  --color-miss: var(--miss);
+  --color-miss-soft: var(--miss-soft);
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", monospace;
+  --radius-ctl: 8px;
+  --radius-panel: 12px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 200ms ease;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* Focus visibility for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Reveal animation for ground-truth regions: stroke draws itself in */
+@keyframes region-draw {
+  from {
+    stroke-dashoffset: var(--dash-len, 600);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes region-fill-in {
+  from {
+    fill-opacity: 0;
+  }
+  to {
+    fill-opacity: 0.16;
+  }
+}
+
+.region-reveal {
+  stroke-dasharray: var(--dash-len, 600);
+  animation:
+    region-draw 650ms cubic-bezier(0.16, 1, 0.3, 1) forwards,
+    region-fill-in 400ms 350ms ease forwards;
+  fill-opacity: 0;
+}
+
+/* Click marker pop + result ring pulse */
+@keyframes marker-pop {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ring-pulse {
+  from {
+    transform: scale(0.4);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+.marker-pop {
+  animation: marker-pop 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.ring-pulse {
+  animation: ring-pulse 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Feedback card slide-up */
+@keyframes rise-in {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.rise-in {
+  animation: rise-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Score count-up ticker uses a plain transition on transform */
+@keyframes score-bump {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.score-bump {
+  animation: score-bump 380ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .region-reveal,
+  .marker-pop,
+  .ring-pulse,
+  .rise-in,
+  .score-bump {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+  }
+  * {
+    transition-duration: 1ms !important;
+  }
+}

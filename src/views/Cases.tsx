@@ -1,0 +1,284 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowCounterClockwise,
+  DownloadSimple,
+  FilePlus,
+  FilmStrip,
+  MagnifyingGlass,
+  PencilSimple,
+  Trash,
+  UploadSimple,
+} from "../components/icons";
+import type { RadCase, Subspecialty } from "../types";
+import { DIFFICULTIES, MODALITIES, SUBSPECIALTIES } from "../types";
+import { exportCases, importCases, restoreSeeds } from "../lib/storage";
+import { Button, Chip, EmptyState, Panel, Select, inputClass } from "../components/ui";
+
+function CaseThumb({ radCase }: { radCase: RadCase }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    if (radCase.imageBlob) {
+      const url = URL.createObjectURL(radCase.imageBlob);
+      setSrc(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setSrc(radCase.imageUrl ?? null);
+  }, [radCase]);
+  return (
+    <div className="aspect-video w-full overflow-hidden rounded-t-(--radius-panel) bg-black">
+      {src && (
+        <img src={src} alt="" loading="lazy" className="h-full w-full object-cover opacity-90" />
+      )}
+    </div>
+  );
+}
+
+const DIFF_COLOR: Record<string, string> = {
+  easy: "var(--hit)",
+  medium: "var(--near)",
+  hard: "var(--miss)",
+};
+
+export function Cases({
+  cases,
+  onNew,
+  onEdit,
+  onDelete,
+  onStudy,
+  onChanged,
+}: {
+  cases: RadCase[];
+  onNew: () => void;
+  onEdit: (c: RadCase) => void;
+  onDelete: (c: RadCase) => void;
+  onStudy: (c: RadCase) => void;
+  onChanged: () => void;
+}) {
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pickedSubs, setPickedSubs] = useState<Subspecialty[]>([]);
+  const [modality, setModality] = useState<string>("all");
+  const [difficulty, setDifficulty] = useState<string>("all");
+  const [query, setQuery] = useState("");
+  const importInput = useRef<HTMLInputElement>(null);
+
+  const subspecialties = useMemo(
+    () => SUBSPECIALTIES.filter((s) => cases.some((c) => c.subspecialty === s)),
+    [cases],
+  );
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return cases.filter(
+      (c) =>
+        (pickedSubs.length === 0 || pickedSubs.includes(c.subspecialty)) &&
+        (modality === "all" || c.modality === modality) &&
+        (difficulty === "all" || c.difficulty === difficulty) &&
+        (q === "" || c.title.toLowerCase().includes(q)),
+    );
+  }, [cases, pickedSubs, modality, difficulty, query]);
+
+  const filtersActive =
+    pickedSubs.length > 0 || modality !== "all" || difficulty !== "all" || query.trim() !== "";
+
+  const doExport = async () => {
+    const json = await exportCases(cases);
+    const blob = new Blob([json], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "pinpoint-cases.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const doImport = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const n = await importCases(await file.text());
+      setNotice(`Imported ${n} ${n === 1 ? "case" : "cases"}.`);
+      onChanged();
+    } catch {
+      setNotice("That file is not a Pinpoint case export.");
+    }
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-6xl px-4 py-8">
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Case library</h1>
+        <span className="font-mono text-sm text-ink-faint">
+          {filtersActive ? `${visible.length} of ${cases.length}` : cases.length}
+        </span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {notice && <span className="mr-2 text-sm text-ink-dim">{notice}</span>}
+          <Button onClick={() => importInput.current?.click()}>
+            <UploadSimple size={15} />
+            Import
+          </Button>
+          <Button onClick={doExport} disabled={cases.length === 0}>
+            <DownloadSimple size={15} />
+            Export
+          </Button>
+          <Button
+            onClick={async () => {
+              await restoreSeeds();
+              setNotice("Bundled cases restored.");
+              onChanged();
+            }}
+          >
+            <ArrowCounterClockwise size={15} />
+            Restore bundled
+          </Button>
+          <Button variant="primary" onClick={onNew}>
+            <FilePlus size={15} />
+            New case
+          </Button>
+        </div>
+      </div>
+      <input
+        ref={importInput}
+        type="file"
+        accept="application/json"
+        className="hidden"
+        onChange={(e) => {
+          doImport(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+
+      {cases.length > 0 && (
+        <div className="mb-6 flex flex-wrap items-center gap-2 rounded-(--radius-panel) border border-line bg-surface p-3">
+          {subspecialties.map((s) => (
+            <Chip
+              key={s}
+              active={pickedSubs.includes(s)}
+              onClick={() =>
+                setPickedSubs((cur) =>
+                  cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s],
+                )
+              }
+            >
+              {s}
+            </Chip>
+          ))}
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Select value={modality} onChange={(e) => setModality(e.target.value)} aria-label="Filter by modality">
+              <option value="all">All modalities</option>
+              {MODALITIES.map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </Select>
+            <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} aria-label="Filter by difficulty">
+              <option value="all">All difficulties</option>
+              {DIFFICULTIES.map((d) => (
+                <option key={d}>{d}</option>
+              ))}
+            </Select>
+            <div className="relative">
+              <MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search findings"
+                aria-label="Search cases by finding"
+                className={inputClass + " !pl-8 w-44"}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cases.length === 0 ? (
+        <EmptyState
+          icon={<FilmStrip size={40} />}
+          title="No cases yet"
+          body="Create a case from any de-identified PNG or JPG, or restore the bundled teaching set."
+          action={
+            <Button variant="primary" onClick={onNew}>
+              <FilePlus size={15} />
+              New case
+            </Button>
+          }
+        />
+      ) : visible.length === 0 ? (
+        <EmptyState
+          icon={<FilmStrip size={40} />}
+          title="Nothing matches these filters"
+          body="Loosen the subspecialty, modality, or difficulty filters, or clear the search."
+          action={
+            filtersActive ? (
+              <Button
+                onClick={() => {
+                  setPickedSubs([]);
+                  setModality("all");
+                  setDifficulty("all");
+                  setQuery("");
+                }}
+              >
+                Clear filters
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map((c) => (
+            <Panel key={c.id} className="group flex flex-col overflow-hidden">
+              <button
+                type="button"
+                onClick={() => onStudy(c)}
+                className="cursor-pointer text-left"
+                aria-label={`Study ${c.title}`}
+              >
+                <CaseThumb radCase={c} />
+              </button>
+              <div className="flex flex-1 flex-col gap-1.5 p-4">
+                <div className="flex items-center gap-2">
+                  <h2 className="min-w-0 truncate font-medium">{c.title}</h2>
+                  <span
+                    className="ml-auto shrink-0 text-xs font-medium capitalize"
+                    style={{ color: DIFF_COLOR[c.difficulty] }}
+                  >
+                    {c.difficulty}
+                  </span>
+                </div>
+                <p className="text-xs text-ink-faint">
+                  {c.modality} · {c.subspecialty} · {c.regions.length}{" "}
+                  {c.regions.length === 1 ? "region" : "regions"}
+                  {c.seed && " · bundled"}
+                </p>
+                <div className="mt-2 flex items-center gap-1 border-t border-line pt-2.5">
+                  <Button className="!px-2.5 !py-1 !text-xs" onClick={() => onStudy(c)}>
+                    Study
+                  </Button>
+                  <Button className="!px-2.5 !py-1 !text-xs" onClick={() => onEdit(c)}>
+                    <PencilSimple size={13} />
+                    Edit
+                  </Button>
+                  {confirming === c.id ? (
+                    <span className="ml-auto flex items-center gap-1">
+                      <Button variant="danger" className="!px-2.5 !py-1 !text-xs" onClick={() => onDelete(c)}>
+                        Confirm delete
+                      </Button>
+                      <Button className="!px-2.5 !py-1 !text-xs" onClick={() => setConfirming(null)}>
+                        Keep
+                      </Button>
+                    </span>
+                  ) : (
+                    <Button
+                      variant="danger"
+                      className="ml-auto !border-transparent !px-2.5 !py-1 !text-xs opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                      onClick={() => setConfirming(c.id)}
+                    >
+                      <Trash size={13} />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Panel>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
