@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowCounterClockwise,
+  CloudArrowUp,
   DownloadSimple,
   FilePlus,
   FilmStrip,
@@ -14,6 +15,7 @@ import type { CaseSource, RadCase, Subspecialty } from "../types";
 import { DIFFICULTIES, MODALITIES, SUBSPECIALTIES, frameCount, isStack } from "../types";
 import { exportCases, importCases, restoreSeeds } from "../lib/storage";
 import { Button, Chip, EmptyState, Panel, Select, inputClass } from "../components/ui";
+import { CloudPanel } from "../components/CloudPanel";
 
 function CaseThumb({ radCase }: { radCase: RadCase }) {
   const [src, setSrc] = useState<string | null>(null);
@@ -76,6 +78,7 @@ export function Cases({
   const [modality, setModality] = useState<string>("all");
   const [difficulty, setDifficulty] = useState<string>("all");
   const [query, setQuery] = useState("");
+  const [showCloud, setShowCloud] = useState(false);
   const importInput = useRef<HTMLInputElement>(null);
 
   // Curated (bundled) cases live in the Library; the user's own uploads
@@ -139,7 +142,16 @@ export function Cases({
           {!isLibrary && (
             <Button onClick={() => importInput.current?.click()}>
               <UploadSimple size={15} />
-              Import
+              Import file
+            </Button>
+          )}
+          {!isLibrary && (
+            <Button
+              variant={showCloud ? "primary" : "ghost"}
+              onClick={() => setShowCloud((v) => !v)}
+            >
+              <CloudArrowUp size={15} />
+              Cloud
             </Button>
           )}
           <Button onClick={doExport} disabled={scoped.length === 0}>
@@ -180,6 +192,10 @@ export function Cases({
           e.target.value = "";
         }}
       />
+
+      {!isLibrary && showCloud && (
+        <CloudPanel cases={scoped} onImported={onChanged} onClose={() => setShowCloud(false)} />
+      )}
 
       {scoped.length > 0 && (
         <div className="mb-6 flex flex-wrap items-center gap-2 rounded-(--radius-panel) border border-line bg-surface p-3">

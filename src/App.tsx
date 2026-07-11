@@ -18,6 +18,7 @@ import { Cases } from "./views/Cases";
 import { Editor } from "./views/Editor";
 import { Study } from "./views/Study";
 import { Stats } from "./views/Stats";
+import { Viewer } from "./views/Viewer";
 
 type Route =
   | { view: "landing" }
@@ -28,6 +29,7 @@ type Route =
   | { view: "personal" }
   | { view: "editor"; existing: RadCase | null }
   | { view: "study"; startAt: number; back: "library" | "personal" }
+  | { view: "viewer" }
   | { view: "stats" };
 
 type Theme = "dark" | "light";
@@ -77,6 +79,25 @@ export default function App() {
 
   useEffect(refreshCases, [refreshCases]);
 
+  // A shared-set deep link (?share=CODE) imports on load, then lands the user
+  // in My cases so they can see what arrived.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const code = params.get("share") ?? params.get("import");
+    if (!code) return;
+    window.history.replaceState(null, "", location.pathname);
+    (async () => {
+      try {
+        const { importFromCloud } = await import("./lib/cloud");
+        await importFromCloud(code);
+        refreshCases();
+        setRoute({ view: "personal" });
+      } catch {
+        /* invalid or unreachable code; stay on the landing page */
+      }
+    })();
+  }, [refreshCases]);
+
   const updateSettings = useCallback((s: ScoringSettings) => {
     setSettings(s);
     saveSettings(s);
@@ -117,6 +138,7 @@ export default function App() {
         ["home", "Play"],
         ["library", "Library"],
         ["personal", "My cases"],
+        ["viewer", "Viewer"],
         ["stats", "Stats"],
       ] as const,
     [],
@@ -244,6 +266,9 @@ export default function App() {
             startAt={route.startAt}
             onExit={() => setRoute({ view: route.back })}
           />
+        )}
+        {route.view === "viewer" && (
+          <Viewer onImportSeries={(draft) => setRoute({ view: "editor", existing: draft })} />
         )}
         {route.view === "stats" && (
           <Stats history={history} onChanged={() => setHistory(loadHistory())} />
