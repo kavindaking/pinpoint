@@ -200,6 +200,7 @@ export function Play({
         onImageSize={(w, h) => setImageSize({ w, h })}
         onTap={handleTap}
         jumpTo={phase === "reveal" ? revealSlice : null}
+        pacs={stack}
         cursor={phase === "aim" ? "crosshair" : "default"}
         overlay={(w, h, viewSlice) => (
           <>
@@ -265,7 +266,7 @@ export function Play({
         <p className="flex items-center justify-center gap-2 text-sm text-ink-faint">
           <Crosshair size={16} />
           {stack
-            ? "Scroll through the slices, then click the abnormality"
+            ? "Scroll the slices and click the abnormality. Right-drag to window, ctrl+scroll to zoom, drag to pan while zoomed."
             : "Click where you think the abnormality is"}
         </p>
       ) : (
