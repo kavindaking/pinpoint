@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, CaretLeft, CaretRight, Eye, EyeSlash } from "../components/icons";
 import type { RadCase } from "../types";
-import { isStack } from "../types";
+import { isDicom, isStack } from "../types";
 import { ImageViewer } from "../components/ImageViewer";
 import { ShapeSvg } from "../components/ShapeSvg";
 import { shapeCenter } from "../lib/geometry";
@@ -77,7 +77,7 @@ export function Study({
 
       <ImageViewer
         radCase={current}
-        pacs={isStack(current)}
+        pacs={isStack(current) || isDicom(current)}
         overlay={(w, h, viewSlice) =>
           showRegions &&
           current.regions

@@ -26,6 +26,11 @@ function CaseThumb({ radCase }: { radCase: RadCase }) {
       setSrc(radCase.posterUrl);
       return;
     }
+    if (radCase.posterBlob) {
+      const url = URL.createObjectURL(radCase.posterBlob);
+      setSrc(url);
+      return () => URL.revokeObjectURL(url);
+    }
     if (radCase.imageBlobs?.length) {
       const url = URL.createObjectURL(radCase.imageBlobs[0]);
       setSrc(url);

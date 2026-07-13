@@ -86,8 +86,12 @@ export interface RadCase {
    * flat images, so it reads like a workstation and keeps real proportions.
    */
   dicomUrls?: string[];
+  /** Uploaded DICOM slices retained in their original form in IndexedDB. */
+  dicomBlobs?: Blob[];
   /** Poster image (a rendered slice) so the case card can show a thumbnail. */
   posterUrl?: string;
+  /** Rendered poster for an uploaded DICOM series. */
+  posterBlob?: Blob;
   credit?: string;
   /** Curated bundled case. Absent/false means a user's personal case. */
   seed?: boolean;
@@ -96,6 +100,7 @@ export interface RadCase {
 
 /** Number of slices in a case; 1 for single-image cases. */
 export function frameCount(c: RadCase): number {
+  if (c.dicomBlobs?.length) return c.dicomBlobs.length;
   if (c.dicomUrls?.length) return c.dicomUrls.length;
   if (c.imageBlobs?.length) return c.imageBlobs.length;
   if (c.imageUrls?.length) return c.imageUrls.length;
@@ -108,7 +113,7 @@ export function isStack(c: RadCase): boolean {
 
 /** A case whose frames are DICOM files rather than flat images. */
 export function isDicom(c: RadCase): boolean {
-  return !!c.dicomUrls?.length;
+  return !!(c.dicomUrls?.length || c.dicomBlobs?.length);
 }
 
 export type ClickResult = "hit" | "near" | "miss";

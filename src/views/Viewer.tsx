@@ -34,6 +34,7 @@ type Drag = null | { mode: "wl" | "pan"; x: number; y: number; startCenter: numb
  */
 export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) => void }) {
   const [images, setImages] = useState<DicomImage[]>([]);
+  const [dicomBlobs, setDicomBlobs] = useState<Blob[]>([]);
   const [slice, setSlice] = useState(0);
   const [view, setView] = useState<View>({ center: 40, width: 400, invert: false, zoom: 1, panX: 0, panY: 0 });
   const [hoverHU, setHoverHU] = useState<{ value: number; unit: string } | null>(null);
@@ -132,11 +133,11 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
     setLoading(true);
     setError(null);
     try {
-      const parsed: DicomImage[] = [];
+      const parsed: { image: DicomImage; blob: Blob }[] = [];
       let compressed = false;
       for (const f of chosen) {
         try {
-          parsed.push(parseDicom(await f.arrayBuffer()));
+          parsed.push({ image: parseDicom(await f.arrayBuffer()), blob: f });
         } catch (err) {
           if (err instanceof CompressedDicomError) compressed = true;
         }
@@ -149,10 +150,12 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
         );
         return;
       }
-      parsed.sort((a, b) => a.instanceNumber - b.instanceNumber);
-      setImages(parsed);
+      parsed.sort((a, b) => a.image.instanceNumber - b.image.instanceNumber);
+      const parsedImages = parsed.map((entry) => entry.image);
+      setImages(parsedImages);
+      setDicomBlobs(parsed.map((entry) => entry.blob));
       setSlice(0);
-      const first = parsed[0];
+      const first = parsedImages[0];
       setView({ center: first.windowCenter, width: first.windowWidth, invert: first.invert, zoom: 1, panX: 0, panY: 0 });
       if (compressed) {
         setError(`${parsed.length} slices loaded. Some slices were skipped because they were compressed.`);
@@ -234,21 +237,17 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
   const endDrag = () => (drag.current = null);
 
   const importAsCase = async () => {
-    if (images.length === 0) return;
-    const blobs: Blob[] = [];
+    if (images.length === 0 || dicomBlobs.length === 0) return;
     const off = document.createElement("canvas");
-    for (const im of images) {
-      off.width = im.cols;
-      off.height = im.rows;
-      const octx = off.getContext("2d")!;
-      const id = octx.createImageData(im.cols, im.rows);
-      renderToImageData(im, view.center, view.width, view.invert, id);
-      octx.putImageData(id, 0, 0);
-      const blob = await new Promise<Blob | null>((r) => off.toBlob(r, "image/png"));
-      if (blob) blobs.push(blob);
-    }
-    if (blobs.length === 0) return;
-    const single = blobs.length === 1;
+    const posterImage = images[Math.floor(images.length / 2)];
+    off.width = posterImage.cols;
+    off.height = posterImage.rows;
+    const octx = off.getContext("2d")!;
+    const id = octx.createImageData(posterImage.cols, posterImage.rows);
+    renderToImageData(posterImage, view.center, view.width, view.invert, id);
+    octx.putImageData(id, 0, 0);
+    const posterBlob =
+      (await new Promise<Blob | null>((resolve) => off.toBlob(resolve, "image/png"))) ?? undefined;
     const draft: RadCase = {
       id: `case-${Date.now()}`,
       title: images[0].seriesDescription || "Imported DICOM",
@@ -258,8 +257,8 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
       subspecialty: "Neuro",
       difficulty: "medium",
       regions: [],
-      imageBlob: single ? blobs[0] : undefined,
-      imageBlobs: single ? undefined : blobs,
+      dicomBlobs,
+      posterBlob,
       createdAt: Date.now(),
     };
     onImportSeries(draft);

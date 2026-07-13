@@ -137,20 +137,27 @@ export function clearHistory(): void {
 
 /* ---- import / export ------------------------------------------------- */
 
-interface ExportedCase extends Omit<RadCase, "imageBlob" | "imageBlobs"> {
+interface ExportedCase
+  extends Omit<RadCase, "imageBlob" | "imageBlobs" | "dicomBlobs" | "posterBlob"> {
   imageData?: string; // single-image data URL
   imageDatas?: string[]; // stack slice data URLs
+  dicomDatas?: string[]; // original uploaded DICOM slices
+  posterData?: string; // rendered DICOM thumbnail
 }
 
 export async function exportCases(cases: RadCase[]): Promise<string> {
   const out: ExportedCase[] = [];
   for (const c of cases) {
-    const { imageBlob, imageBlobs, ...rest } = c;
+    const { imageBlob, imageBlobs, dicomBlobs, posterBlob, ...rest } = c;
     const entry: ExportedCase = { ...rest };
     if (imageBlob) entry.imageData = await blobToDataUrl(imageBlob);
     if (imageBlobs?.length) {
       entry.imageDatas = await Promise.all(imageBlobs.map(blobToDataUrl));
     }
+    if (dicomBlobs?.length) {
+      entry.dicomDatas = await Promise.all(dicomBlobs.map(blobToDataUrl));
+    }
+    if (posterBlob) entry.posterData = await blobToDataUrl(posterBlob);
     out.push(entry);
   }
   return JSON.stringify({ app: "pinpoint", version: 1, cases: out }, null, 2);
@@ -163,14 +170,24 @@ export async function importCases(json: string): Promise<number> {
   }
   let count = 0;
   for (const entry of parsed.cases as ExportedCase[]) {
-    const { imageData, imageDatas, ...rest } = entry;
+    const { imageData, imageDatas, dicomDatas, posterData, ...rest } = entry;
     if (!rest.id || !rest.title || !Array.isArray(rest.regions)) continue;
     const c: RadCase = { ...rest };
     if (imageData) c.imageBlob = dataUrlToBlob(imageData);
     if (imageDatas?.length) c.imageBlobs = imageDatas.map(dataUrlToBlob);
+    if (dicomDatas?.length) c.dicomBlobs = dicomDatas.map(dataUrlToBlob);
+    if (posterData) c.posterBlob = dataUrlToBlob(posterData);
     // Imported cases are personal, never curated.
     delete c.seed;
-    if (!c.imageBlob && !c.imageUrl && !c.imageBlobs?.length && !c.imageUrls?.length) continue;
+    if (
+      !c.imageBlob &&
+      !c.imageUrl &&
+      !c.imageBlobs?.length &&
+      !c.imageUrls?.length &&
+      !c.dicomBlobs?.length &&
+      !c.dicomUrls?.length
+    )
+      continue;
     await saveCase(c);
     count++;
   }

@@ -23,7 +23,7 @@ Dark-first UI designed for reading-room conditions, with a light theme toggle.
   browser. Rounds can draw from either pool or both.
 - **Scrollable CT/MRI stacks, rendered like a workstation**: multi-slice cases play in a
   PACS-style viewport. Scroll with the mouse wheel or the side slider to find the level,
-  then click. A DICOM-backed case (`dicomUrls`) is drawn through the same DICOM pipeline as
+  then click. A DICOM-backed case (`dicomUrls` or uploaded `dicomBlobs`) is drawn through the same DICOM pipeline as
   the Viewer tab, with true window/level on right-drag, an HU readout, invert, and square
   pixel spacing so the anatomy keeps its real proportions. Ground truth is per-slice,
   scoring is slice-aware (a click on the wrong slice misses), and the reveal jumps to the
@@ -106,7 +106,9 @@ Only upload images that are de-identified and that you have the right to use.
 - **DICOM viewer** (`src/lib/dicom.ts`, `src/views/Viewer.tsx`): `dicom-parser` reads the
   P10 file, pixels are rescaled to modality units (HU for CT), and a canvas renders the
   windowed slice. Only uncompressed transfer syntaxes are decoded; compressed files get a
-  clear message. Full JPEG/JPEG2000 support would mean adding cornerstone3D's wasm codecs.
+  clear message. Studies imported from the Viewer retain their original DICOM blobs, so
+  quizzes keep true window/level, HU values, and slice navigation instead of using flattened
+  PNG exports. Full JPEG/JPEG2000 support would mean adding cornerstone3D's wasm codecs.
 - **Cloud** (`api/`, `src/lib/cloud.ts`): Vercel serverless functions plus `@vercel/blob`.
   Publishing uploads the exported set (images embedded) straight from the browser to Blob
   via a client-token handler (`/api/blob-upload`), bypassing the function body limit; a

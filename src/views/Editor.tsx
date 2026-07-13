@@ -10,7 +10,15 @@ import {
   UploadSimple,
 } from "../components/icons";
 import type { BodyRegion, CaseRegion, Difficulty, Modality, RadCase, Shape, Subspecialty } from "../types";
-import { BODY_REGIONS, DIFFICULTIES, MODALITIES, SUBSPECIALTIES, frameCount, inferSubspecialty } from "../types";
+import {
+  BODY_REGIONS,
+  DIFFICULTIES,
+  MODALITIES,
+  SUBSPECIALTIES,
+  frameCount,
+  inferSubspecialty,
+  isDicom,
+} from "../types";
 import { ImageViewer, type ViewerPoint } from "../components/ImageViewer";
 import { ShapeSvg } from "../components/ShapeSvg";
 import { Button, Field, Panel, Select, inputClass } from "../components/ui";
@@ -64,7 +72,11 @@ export function Editor({
   // re-mounting the viewer on every metadata keystroke.
   const previewCase: RadCase | null = useMemo(() => {
     const hasNew = blobs.length > 0;
-    const hasExisting = existing?.imageUrl || existing?.imageUrls?.length;
+    const hasExisting =
+      existing?.imageUrl ||
+      existing?.imageUrls?.length ||
+      existing?.dicomUrls?.length ||
+      existing?.dicomBlobs?.length;
     if (!hasNew && !hasExisting) return null;
     return {
       id: existing?.id ?? "draft",
@@ -79,6 +91,8 @@ export function Editor({
       imageUrls: hasNew ? undefined : existing?.imageUrls,
       imageBlob: hasNew && blobs.length === 1 ? blobs[0] : undefined,
       imageBlobs: hasNew && blobs.length > 1 ? blobs : undefined,
+      dicomUrls: hasNew ? undefined : existing?.dicomUrls,
+      dicomBlobs: hasNew ? undefined : existing?.dicomBlobs,
       createdAt: 0,
     };
   }, [blobs, existing]);
@@ -184,6 +198,10 @@ export function Editor({
       imageUrls: hasNew ? undefined : existing?.imageUrls,
       imageBlob: hasNew && blobs.length === 1 ? blobs[0] : undefined,
       imageBlobs: hasNew && blobs.length > 1 ? blobs : undefined,
+      dicomUrls: hasNew ? undefined : existing?.dicomUrls,
+      dicomBlobs: hasNew ? undefined : existing?.dicomBlobs,
+      posterUrl: hasNew ? undefined : existing?.posterUrl,
+      posterBlob: hasNew ? undefined : existing?.posterBlob,
       credit: credit.trim() || undefined,
       seed: existing?.seed,
       createdAt: existing?.createdAt ?? Date.now(),
@@ -244,6 +262,7 @@ export function Editor({
 
               <ImageViewer
                 radCase={previewCase}
+                pacs={isDicom(previewCase)}
                 onTap={handleTap}
                 onDrag={drag}
                 onSlice={setSlice}

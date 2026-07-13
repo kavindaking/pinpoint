@@ -63,9 +63,9 @@ export function ImageViewer({
   cursor?: string;
   maxHeight?: string;
 }) {
-  const dicomSources = radCase.dicomUrls;
-  const dicomMode = !!dicomSources?.length;
-  const frames = frameCount(radCase);
+  const dicomUrls = radCase.dicomUrls;
+  const dicomBlobs = radCase.dicomBlobs;
+  const dicomMode = !!(dicomUrls?.length || dicomBlobs?.length);
 
   const [srcs, setSrcs] = useState<string[]>([]);
   const [dicom, setDicom] = useState<DicomImage[] | null>(null);
@@ -80,6 +80,7 @@ export function ImageViewer({
   const [center, setCenter] = useState(40);
   const [width, setWidth] = useState(160);
   const [hu, setHu] = useState<{ value: number; unit: string } | null>(null);
+  const frames = dicom?.length ?? frameCount(radCase);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -116,17 +117,22 @@ export function ImageViewer({
     setDicomError(null);
     idRef.current = null;
 
-    if (dicomSources?.length) {
+    if (dicomUrls?.length || dicomBlobs?.length) {
       let cancelled = false;
       (async () => {
         try {
           const frames: DicomImage[] = [];
           let compressed = false;
-          for (const url of dicomSources) {
-            const res = await fetch(url);
-            if (!res.ok) continue;
+          const sources: (string | Blob)[] = [...(dicomUrls ?? []), ...(dicomBlobs ?? [])];
+          for (const source of sources) {
             try {
-              frames.push(parseDicom(await res.arrayBuffer()));
+              if (typeof source === "string") {
+                const res = await fetch(source);
+                if (!res.ok) continue;
+                frames.push(parseDicom(await res.arrayBuffer()));
+              } else {
+                frames.push(parseDicom(await source.arrayBuffer()));
+              }
             } catch (err) {
               if (err instanceof CompressedDicomError) compressed = true;
             }
