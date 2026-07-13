@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { frameCount, type RadCase } from "../types";
-import { CompressedDicomError, parseDicom, renderToImageData, type DicomImage } from "../lib/dicom";
+import {
+  CompressedDicomError,
+  parseDicom,
+  renderToImageData,
+  WL_PRESETS,
+  type DicomImage,
+} from "../lib/dicom";
 import { ArrowsIn, CircleHalf, MagnifyingGlassMinus, MagnifyingGlassPlus } from "./icons";
 
 export interface ViewerPoint {
@@ -41,6 +47,7 @@ export function ImageViewer({
   onSlice,
   jumpTo,
   pacs = false,
+  workstation = false,
   cursor = "default",
   maxHeight = "72vh",
 }: {
@@ -60,6 +67,8 @@ export function ImageViewer({
   jumpTo?: number | null;
   /** PACS-style viewport: zoom, pan, windowing drag, invert. */
   pacs?: boolean;
+  /** Show the full reading-room toolbar and metadata chrome. */
+  workstation?: boolean;
   cursor?: string;
   maxHeight?: string;
 }) {
@@ -290,8 +299,13 @@ export function ImageViewer({
   );
 
   const handleDown = (e: PointerEvent) => {
-    if (pacs && e.button === 2) {
-      // Right-drag adjusts the window (level/brightness, width/contrast).
+    if (
+      pacs &&
+      (e.button === 2 ||
+        (e.button === 0 && !onTap && !onDrag && !e.shiftKey && !e.altKey))
+    ) {
+      // Quiz mode reserves left-click for scoring. In a read-only viewport,
+      // left-drag uses the same window/level gesture as the Viewer tab.
       windowing.current = true;
       lastClient.current = { x: e.clientX, y: e.clientY };
       svgRef.current?.setPointerCapture(e.pointerId);
@@ -364,6 +378,7 @@ export function ImageViewer({
   };
 
   const isStackView = frames > 1;
+  const activeDicom = dicom?.[slice];
   const toneAdjusted = dicomMode
     ? dicom != null && (Math.round(center) !== Math.round(dicom[0].windowCenter) || Math.round(width) !== Math.round(dicom[0].windowWidth) || invert !== dicom[0].invert)
     : bright !== 100 || contrast !== 100 || invert;
@@ -380,8 +395,80 @@ export function ImageViewer({
   const pacsButton =
     "pointer-events-auto flex size-7 cursor-pointer items-center justify-center rounded-[6px] bg-black/55 text-white/85 transition-colors hover:bg-black/75 hover:text-white";
 
+  const resetAll = () => {
+    resetView();
+    if (dicom?.[0]) {
+      setCenter(dicom[0].windowCenter);
+      setWidth(dicom[0].windowWidth);
+      setInvert(dicom[0].invert);
+    } else {
+      resetTone();
+    }
+  };
+
   return (
-    <div className="mx-auto flex items-stretch gap-2" style={{ width: size ? `min(100%, calc(${maxHeight} * ${size.w / size.h} + ${isStackView ? 2.25 : 0}rem))` : "100%" }}>
+    <div className="flex flex-col gap-2">
+      {workstation && (
+        <div className="flex flex-wrap items-center gap-2">
+          {dicomMode &&
+            WL_PRESETS.map((preset) => (
+              <button
+                key={preset.name}
+                type="button"
+                onClick={() => {
+                  setCenter(preset.center);
+                  setWidth(preset.width);
+                }}
+                className={`cursor-pointer rounded-(--radius-ctl) border px-2.5 py-1 text-xs transition-colors ${
+                  Math.round(center) === preset.center && Math.round(width) === preset.width
+                    ? "border-accent bg-accent-soft text-ink"
+                    : "border-line text-ink-dim hover:border-line-strong hover:text-ink"
+                }`}
+              >
+                {preset.name}
+              </button>
+            ))}
+          {dicomMode && <div className="mx-1 h-5 w-px bg-(--border)" />}
+          <button
+            type="button"
+            onClick={() => setInvert((value) => !value)}
+            className={`flex cursor-pointer items-center gap-1.5 rounded-(--radius-ctl) border px-2.5 py-1 text-xs transition-colors ${
+              invert
+                ? "border-accent bg-accent-soft text-ink"
+                : "border-line text-ink-dim hover:border-line-strong hover:text-ink"
+            }`}
+          >
+            <CircleHalf size={14} />
+            Invert
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomBy(1.2)}
+            className="flex cursor-pointer items-center rounded-(--radius-ctl) border border-line px-2 py-1 text-ink-dim transition-colors hover:border-line-strong hover:text-ink"
+            aria-label="Zoom in"
+          >
+            <MagnifyingGlassPlus size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => zoomBy(1 / 1.2)}
+            className="flex cursor-pointer items-center rounded-(--radius-ctl) border border-line px-2 py-1 text-ink-dim transition-colors hover:border-line-strong hover:text-ink"
+            aria-label="Zoom out"
+          >
+            <MagnifyingGlassMinus size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={resetAll}
+            className="flex cursor-pointer items-center gap-1.5 rounded-(--radius-ctl) border border-line px-2.5 py-1 text-xs text-ink-dim transition-colors hover:border-line-strong hover:text-ink"
+          >
+            <ArrowsIn size={14} />
+            Reset
+          </button>
+        </div>
+      )}
+
+      <div className="mx-auto flex items-stretch gap-2" style={{ width: size ? `min(100%, calc(${maxHeight} * ${size.w / size.h} + ${isStackView ? 2.25 : 0}rem))` : "100%" }}>
       <div
         ref={containerRef}
         className="relative min-w-0 flex-1 overflow-hidden rounded-(--radius-panel) border border-line bg-black"
@@ -456,10 +543,26 @@ export function ImageViewer({
             Loading series…
           </div>
         )}
-        {isStackView && (
+        {isStackView && !workstation && (
           <div className="pointer-events-none absolute left-2 top-2 rounded-(--radius-ctl) bg-black/55 px-2 py-1 font-mono text-xs text-white/90">
             {slice + 1} / {frames}
           </div>
+        )}
+        {workstation && activeDicom && (
+          <>
+            <div className="pointer-events-none absolute left-3 top-2 font-mono text-[11px] leading-tight text-white/80">
+              <div>{activeDicom.patientName || "Anonymous"}</div>
+              <div className="text-white/60">
+                {activeDicom.seriesDescription || activeDicom.modality}
+              </div>
+            </div>
+            <div className="pointer-events-none absolute right-3 top-2 text-right font-mono text-[11px] leading-tight text-white/80">
+              <div>{slice + 1} / {frames}</div>
+              {activeDicom.sliceLocation != null && (
+                <div className="text-white/60">{activeDicom.sliceLocation.toFixed(1)} mm</div>
+              )}
+            </div>
+          </>
         )}
         {pacs && zoom !== 1 && (
           <div className="pointer-events-none absolute right-2 top-2 rounded-(--radius-ctl) bg-black/55 px-2 py-1 font-mono text-xs text-white/90">
@@ -499,7 +602,7 @@ export function ImageViewer({
             {invert && " inv"}
           </button>
         )}
-        {pacs && (
+        {pacs && !workstation && (
           <div className="pointer-events-none absolute bottom-2 right-2 flex items-center gap-1">
             <button type="button" className={pacsButton} title="Zoom in (ctrl+scroll)" aria-label="Zoom in" onClick={() => zoomBy(1.25)}>
               <MagnifyingGlassPlus size={15} />
@@ -537,6 +640,7 @@ export function ImageViewer({
           />
         </div>
       )}
+      </div>
     </div>
   );
 }

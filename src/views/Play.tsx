@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Crosshair, Timer } from "../components/icons";
 import type { CaseOutcome, RadCase, RegionOutcome, ScoringSettings } from "../types";
-import { isDicom, isStack } from "../types";
+import { isStack } from "../types";
 import { caseBaseScore, evaluateClick, timeBonus } from "../lib/scoring";
 import { shapeCenter } from "../lib/geometry";
 import { ImageViewer, type ViewerPoint } from "../components/ImageViewer";
@@ -200,7 +200,8 @@ export function Play({
         onImageSize={(w, h) => setImageSize({ w, h })}
         onTap={handleTap}
         jumpTo={phase === "reveal" ? revealSlice : null}
-        pacs={stack || isDicom(current)}
+        pacs
+        workstation
         cursor={phase === "aim" ? "crosshair" : "default"}
         overlay={(w, h, viewSlice) => (
           <>
