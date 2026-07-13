@@ -102,13 +102,12 @@ Only upload images that are de-identified and that you have the right to use.
   so pointer coordinates map 1:1 to normalized image coordinates at any display size. A
   multi-frame case resolves to a list of slice URLs/Blobs; wheel and slider events change
   the active slice, and that slice flows through every pointer and overlay callback so
-  scoring and drawing stay slice-aware. The Viewer tab, quiz, editor, and study mode all
-  render through this same component; workstation controls are a shared configuration,
-  not a second canvas implementation.
-- **DICOM viewer** (`src/lib/dicom.ts`, `src/views/Viewer.tsx`): `dicom-parser` reads the
-  P10 file, pixels are rescaled to modality units (HU for CT), and a canvas renders the
-  windowed slice inside the shared viewer. `Viewer.tsx` only loads and imports studies.
-  Only uncompressed transfer syntaxes are decoded; compressed files get a
+  scoring and drawing stay slice-aware.
+- **DICOM viewer** (`src/lib/dicom.ts`, `src/components/DicomStudyViewer.tsx`):
+  `dicom-parser` reads the P10 file, pixels are rescaled to modality units (HU for CT), and
+  the original Sample Viewer canvas renders the windowed slice with aspect-fit geometry.
+  The Viewer tab and DICOM quiz cases use this surface; ordinary quiz images continue to
+  use `ImageViewer`. Only uncompressed transfer syntaxes are decoded; compressed files get a
   clear message. Studies imported from the Viewer retain their original DICOM blobs, so
   quizzes keep true window/level, HU values, and slice navigation instead of using flattened
   PNG exports. Full JPEG/JPEG2000 support would mean adding cornerstone3D's wasm codecs.

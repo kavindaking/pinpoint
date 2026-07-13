@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Crosshair, Timer } from "../components/icons";
 import type { CaseOutcome, RadCase, RegionOutcome, ScoringSettings } from "../types";
-import { isStack } from "../types";
+import { isDicom, isStack } from "../types";
 import { caseBaseScore, evaluateClick, timeBonus } from "../lib/scoring";
 import { shapeCenter } from "../lib/geometry";
 import { ImageViewer, type ViewerPoint } from "../components/ImageViewer";
+import { DicomCaseViewer } from "../components/DicomStudyViewer";
 import { ShapeSvg } from "../components/ShapeSvg";
 import { Button } from "../components/ui";
 
@@ -46,6 +47,7 @@ export function Play({
   const current = cases[index];
   const timed = settings.timerSeconds > 0;
   const stack = isStack(current);
+  const CaseImageViewer = isDicom(current) ? DicomCaseViewer : ImageViewer;
   const foundIds = useMemo(() => new Set(outcomes.map((o) => o.regionId)), [outcomes]);
   const remaining = useMemo(
     () => current.regions.filter((r) => !foundIds.has(r.id)),
@@ -195,13 +197,12 @@ export function Play({
         )}
       </p>
 
-      <ImageViewer
+      <CaseImageViewer
         radCase={current}
         onImageSize={(w, h) => setImageSize({ w, h })}
         onTap={handleTap}
         jumpTo={phase === "reveal" ? revealSlice : null}
-        pacs
-        workstation
+        pacs={stack}
         cursor={phase === "aim" ? "crosshair" : "default"}
         overlay={(w, h, viewSlice) => (
           <>

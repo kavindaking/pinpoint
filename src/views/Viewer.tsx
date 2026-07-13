@@ -1,38 +1,22 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Cube, FilePlus, FolderOpen, Stack, Warning } from "../components/icons";
-import { ImageViewer } from "../components/ImageViewer";
+import { DicomStudyViewer } from "../components/DicomStudyViewer";
 import { Button } from "../components/ui";
-import { CompressedDicomError, parseDicom, renderToImageData, type DicomImage } from "../lib/dicom";
+import {
+  CompressedDicomError,
+  parseDicom,
+  renderToImageData,
+  type DicomImage,
+} from "../lib/dicom";
 import type { RadCase } from "../types";
 
-/**
- * DICOM study loader. The actual viewport is the shared ImageViewer used by
- * Play and Study, so the Viewer tab and quiz cannot drift into separate
- * rendering or interaction implementations.
- */
+/** Load/import shell for the original Sample Viewer surface. */
 export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) => void }) {
   const [images, setImages] = useState<DicomImage[]>([]);
   const [dicomBlobs, setDicomBlobs] = useState<Blob[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-
-  const viewerCase = useMemo<RadCase | null>(() => {
-    const first = images[0];
-    if (!first || dicomBlobs.length === 0) return null;
-    return {
-      id: "viewer-study",
-      title: first.seriesDescription || "DICOM study",
-      explanation: "",
-      modality: first.modality === "MR" ? "MRI" : "CT",
-      bodyRegion: "Head",
-      subspecialty: "Neuro",
-      difficulty: "medium",
-      regions: [],
-      dicomBlobs,
-      createdAt: 0,
-    };
-  }, [images, dicomBlobs]);
 
   const loadFiles = useCallback(async (files: File[]) => {
     const dcm = files.filter(
@@ -129,6 +113,8 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
     });
   };
 
+  const hasImages = images.length > 0;
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
       <div className="flex flex-wrap items-center gap-3">
@@ -145,7 +131,7 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
             <Cube size={15} />
             Sample series
           </Button>
-          {viewerCase && (
+          {hasImages && (
             <Button variant="primary" onClick={importAsCase}>
               <FilePlus size={15} />
               Import as case
@@ -172,7 +158,7 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
         </div>
       )}
 
-      {!viewerCase ? (
+      {!hasImages ? (
         <button
           type="button"
           onClick={() => fileInput.current?.click()}
@@ -193,18 +179,7 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
           </span>
         </button>
       ) : (
-        <>
-          <ImageViewer
-            radCase={viewerCase}
-            pacs
-            workstation
-            cursor="crosshair"
-            maxHeight="64vh"
-          />
-          <p className="text-center font-mono text-[10.5px] text-ink-faint">
-            drag: window/level · shift-drag: pan · wheel: scroll · ⌘/ctrl-wheel: zoom
-          </p>
-        </>
+        <DicomStudyViewer images={images} />
       )}
     </div>
   );
