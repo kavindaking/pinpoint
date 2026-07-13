@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Circle,
@@ -96,8 +96,16 @@ export function Editor({
   const [polyPoints, setPolyPoints] = useState<[number, number][]>([]);
   const [jump, setJump] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
   const dragAnchor = useRef<ViewerPoint | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const directoryInput = useRef<HTMLInputElement>(null);
+
+  // `webkitdirectory` is still the interoperable browser API for choosing a
+  // folder. Set it imperatively because React's input typings do not expose it.
+  useEffect(() => {
+    directoryInput.current?.setAttribute("webkitdirectory", "");
+  }, []);
 
   // A stand-in case object so the viewer can render before saving. Only
   // image-related fields matter here; keeping the deps narrow avoids
@@ -201,15 +209,20 @@ export function Editor({
     },
   };
 
-  const handleFiles = async (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null, fromFolder = false) => {
     if (!files || files.length === 0) return;
+    setImportNotice(null);
     const selected = [...files];
-    const dicomFiles = selected.filter(
-      (file) =>
-        file.name.toLowerCase().endsWith(".dcm") || file.type === "application/dicom",
-    );
+    // A DICOM folder can contain DICOMDIR and other extensionless support
+    // files. Try every file in a folder and retain only decodable image files.
+    const dicomFiles = fromFolder
+      ? selected.filter((file) => !file.name.startsWith("."))
+      : selected.filter(
+          (file) =>
+            file.name.toLowerCase().endsWith(".dcm") || file.type === "application/dicom",
+        );
     if (dicomFiles.length > 0) {
-      if (dicomFiles.length !== selected.length) {
+      if (!fromFolder && dicomFiles.length !== selected.length) {
         setError("Choose either DICOM files or image files, not both at once.");
         return;
       }
@@ -243,6 +256,11 @@ export function Editor({
         compressed
           ? `${decodedImages.length} slices loaded. Some compressed files were skipped.`
           : null,
+      );
+      setImportNotice(
+        decodedImages.length === 1
+          ? "Only 1 slice loaded. Choose the full DICOM folder (or select all of its .dcm files) to make the study scrollable."
+          : `${decodedImages.length} slices loaded — the study is ready to scroll.`,
       );
       setRegions([]);
       setPolyPoints([]);
@@ -314,7 +332,10 @@ export function Editor({
           {existing ? "Edit case" : "New case"}
         </h1>
         <div className="ml-auto flex items-center gap-3">
-          {error && <p className="text-sm text-miss">{error}</p>}
+          <div className="text-right text-sm">
+            {error && <p className="text-miss">{error}</p>}
+            {importNotice && <p className="text-ink-dim">{importNotice}</p>}
+          </div>
           <Button variant="primary" onClick={save}>
             <FloppyDisk size={16} />
             Save case
@@ -353,6 +374,14 @@ export function Editor({
                 >
                   <UploadSimple size={15} />
                   {isStack ? "Replace stack" : "Replace image"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="!px-3 !py-1.5"
+                  onClick={() => directoryInput.current?.click()}
+                >
+                  <UploadSimple size={15} />
+                  DICOM folder
                 </Button>
               </div>
 
@@ -437,9 +466,7 @@ export function Editor({
               )}
             </>
           ) : (
-            <button
-              type="button"
-              onClick={() => fileInput.current?.click()}
+            <div
               className="flex min-h-72 cursor-pointer flex-col items-center justify-center gap-3 rounded-(--radius-panel) border-2 border-dashed border-line text-ink-dim transition-colors hover:border-accent hover:text-ink"
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
@@ -449,10 +476,16 @@ export function Editor({
             >
               <UploadSimple size={28} />
               <span className="max-w-xs text-center text-sm">
-                Drop de-identified DICOM, PNG, JPG, or WebP files here. Select multiple DICOM
-                files or images for a scrollable CT or MRI stack.
+                For a scrollable CT or MRI, choose the complete DICOM folder—not one .dcm
+                slice. You can also upload individual images or select multiple files.
               </span>
-            </button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button variant="primary" onClick={() => directoryInput.current?.click()}>
+                  Choose DICOM folder
+                </Button>
+                <Button onClick={() => fileInput.current?.click()}>Choose files</Button>
+              </div>
+            </div>
           )}
           <input
             ref={fileInput}
@@ -460,7 +493,20 @@ export function Editor({
             accept=".dcm,application/dicom,image/png,image/jpeg,image/webp"
             multiple
             className="hidden"
-            onChange={(e) => handleFiles(e.target.files)}
+            onChange={(e) => {
+              void handleFiles(e.currentTarget.files);
+              e.currentTarget.value = "";
+            }}
+          />
+          <input
+            ref={directoryInput}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              void handleFiles(e.currentTarget.files, true);
+              e.currentTarget.value = "";
+            }}
           />
         </div>
 

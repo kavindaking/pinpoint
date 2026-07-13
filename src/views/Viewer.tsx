@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Cube, FilePlus, FolderOpen, Stack, Warning } from "../components/icons";
 import { DicomStudyViewer } from "../components/DicomStudyViewer";
 import { Button } from "../components/ui";
@@ -17,13 +17,20 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const directoryInput = useRef<HTMLInputElement>(null);
 
-  const loadFiles = useCallback(async (files: File[]) => {
+  useEffect(() => {
+    directoryInput.current?.setAttribute("webkitdirectory", "");
+  }, []);
+
+  const loadFiles = useCallback(async (files: File[], fromFolder = false) => {
     const dcm = files.filter(
       (file) =>
         file.name.toLowerCase().endsWith(".dcm") || file.type === "application/dicom",
     );
-    const chosen = dcm.length ? dcm : files;
+    // Study folders often contain DICOMDIR or extensionless image files, so
+    // try every non-hidden file and keep only the decodable image objects.
+    const chosen = fromFolder ? files.filter((file) => !file.name.startsWith(".")) : dcm.length ? dcm : files;
     if (chosen.length === 0) return;
     setLoading(true);
     setError(null);
@@ -51,6 +58,10 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
       setDicomBlobs(parsed.map((entry) => entry.blob));
       if (compressed) {
         setError(`${decodedImages.length} slices loaded. Some files were skipped because they were compressed.`);
+      } else if (decodedImages.length === 1) {
+        setError(
+          "Only 1 slice loaded. Choose the complete DICOM folder (or select all of its .dcm files) to load a scrollable study.",
+        );
       }
     } finally {
       setLoading(false);
@@ -127,7 +138,11 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button onClick={() => fileInput.current?.click()}>
             <FolderOpen size={15} />
-            Open .dcm
+            Choose files
+          </Button>
+          <Button onClick={() => directoryInput.current?.click()}>
+            <FolderOpen size={15} />
+            DICOM folder
           </Button>
           <Button onClick={loadSample} disabled={loading}>
             <Cube size={15} />
@@ -152,6 +167,16 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
           event.target.value = "";
         }}
       />
+      <input
+        ref={directoryInput}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          void loadFiles([...(event.currentTarget.files ?? [])], true);
+          event.currentTarget.value = "";
+        }}
+      />
 
       {error && (
         <div className="flex items-start gap-2 rounded-(--radius-panel) border border-line bg-surface p-3 text-sm text-ink-dim">
@@ -161,9 +186,7 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
       )}
 
       {!hasImages ? (
-        <button
-          type="button"
-          onClick={() => fileInput.current?.click()}
+        <div
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => {
             event.preventDefault();
@@ -173,13 +196,17 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
         >
           <Stack size={30} />
           <span className="max-w-sm text-center text-sm">
-            Drop DICOM (.dcm) files here, or click to browse. Multiple files load as a
-            scrollable series. Uncompressed DICOM only.
+            A CT or MRI study normally contains one .dcm file per slice. Choose the complete
+            DICOM folder to load the scrollable series.
           </span>
-          <span className="text-xs text-ink-faint">
-            No sample on hand? Load the demo CT head series above.
-          </span>
-        </button>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button variant="primary" onClick={() => directoryInput.current?.click()}>
+              Choose DICOM folder
+            </Button>
+            <Button onClick={() => fileInput.current?.click()}>Choose files</Button>
+          </div>
+          <span className="text-xs text-ink-faint">Uncompressed DICOM only.</span>
+        </div>
       ) : (
         <DicomStudyViewer images={images} />
       )}
