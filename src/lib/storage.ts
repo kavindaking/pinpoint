@@ -82,13 +82,18 @@ function getTombstones(): string[] {
   }
 }
 
-/** Insert any seed case that is neither present nor deliberately deleted. */
+/**
+ * Keep the curated Library in step with the shipped seed definitions.
+ * Every non-deleted seed is written on load, so image or region fixes in
+ * code reach returning visitors without a manual "Restore bundled". This is
+ * safe because curated cases are read-only in the UI, so a stored copy is
+ * never something the user edited; deletions are honored via tombstones.
+ */
 async function ensureSeeds(): Promise<void> {
   const dead = getTombstones();
-  const existing = await tx<IDBValidKey[]>("readonly", (s) => s.getAllKeys());
-  const have = new Set(existing.map(String));
-  const missing = SEED_CASES.filter((c) => !have.has(c.id) && !dead.includes(c.id));
-  for (const c of missing) await saveCase(c);
+  for (const c of SEED_CASES) {
+    if (!dead.includes(c.id)) await saveCase(c);
+  }
 }
 
 /** Bring back every bundled seed case, clearing tombstones. */
