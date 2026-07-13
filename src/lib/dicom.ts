@@ -39,6 +39,15 @@ function firstNum(dataSet: DataSet, tag: string, fallback: number): number {
 }
 
 export function parseDicom(buffer: ArrayBuffer): DicomImage {
+  return parseDicomFrames(buffer)[0];
+}
+
+/**
+ * Decode every frame in a DICOM object. Traditional CT/MR series commonly
+ * store one slice per file, while ultrasound, cine, and some exported studies
+ * store many frames in one file via Number of Frames (0028,0008).
+ */
+export function parseDicomFrames(buffer: ArrayBuffer): DicomImage[] {
   const byteArray = new Uint8Array(buffer);
   const dataSet = dicomParser.parseDicom(byteArray);
 
@@ -60,50 +69,71 @@ export function parseDicom(buffer: ArrayBuffer): DicomImage {
   if (samplesPerPixel !== 1) {
     throw new Error("Colour DICOM images are not supported by this viewer.");
   }
+  if (bitsAllocated !== 8 && bitsAllocated !== 16) {
+    throw new Error(`DICOM pixels with ${bitsAllocated} bits are not supported.`);
+  }
   const pixelEl = dataSet.elements.x7fe00010;
   if (!pixelEl) throw new Error("This file has no image pixel data.");
 
-  const count = rows * cols;
-  const pixels = new Float32Array(count);
+  const pixelsPerFrame = rows * cols;
+  if (pixelsPerFrame <= 0) throw new Error("This DICOM has invalid image dimensions.");
   const offset = pixelEl.dataOffset;
   const dv = new DataView(buffer, offset, Math.min(pixelEl.length, buffer.byteLength - offset));
+  const bytesPerPixel = bitsAllocated <= 8 ? 1 : 2;
+  const bytesPerFrame = pixelsPerFrame * bytesPerPixel;
+  const availableFrames = Math.floor(dv.byteLength / bytesPerFrame);
+  const declaredFrames = Math.max(1, dataSet.intString("x00280008") ?? 1);
+  const frameCount = Math.min(declaredFrames, availableFrames);
+  if (frameCount === 0) throw new Error("This DICOM has incomplete pixel data.");
 
-  let min = Infinity;
-  let max = -Infinity;
-  for (let i = 0; i < count; i++) {
-    let raw: number;
-    if (bitsAllocated <= 8) {
-      raw = pixelRepresentation ? dv.getInt8(i) : dv.getUint8(i);
-    } else {
-      const bo = i * 2;
-      raw = pixelRepresentation ? dv.getInt16(bo, !bigEndian) : dv.getUint16(bo, !bigEndian);
+  const modality = (dataSet.string("x00080060") ?? "").trim();
+  const baseInstance = dataSet.intString("x00200013") ?? 0;
+  const baseSliceLocation = safeFloat(dataSet, "x00201041");
+  const frames: DicomImage[] = [];
+
+  for (let frame = 0; frame < frameCount; frame++) {
+    const pixels = new Float32Array(pixelsPerFrame);
+    const frameOffset = frame * bytesPerFrame;
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < pixelsPerFrame; i++) {
+      const byteOffset = frameOffset + i * bytesPerPixel;
+      let raw: number;
+      if (bitsAllocated <= 8) {
+        raw = pixelRepresentation ? dv.getInt8(byteOffset) : dv.getUint8(byteOffset);
+      } else {
+        raw = pixelRepresentation
+          ? dv.getInt16(byteOffset, !bigEndian)
+          : dv.getUint16(byteOffset, !bigEndian);
+      }
+      const value = raw * slope + intercept;
+      pixels[i] = value;
+      if (value < min) min = value;
+      if (value > max) max = value;
     }
-    const val = raw * slope + intercept;
-    pixels[i] = val;
-    if (val < min) min = val;
-    if (val > max) max = val;
+
+    frames.push({
+      rows,
+      cols,
+      pixels,
+      min,
+      max,
+      windowCenter: firstNum(dataSet, "x00281050", (min + max) / 2),
+      windowWidth: firstNum(dataSet, "x00281051", Math.max(1, max - min)),
+      invert: photometric === "MONOCHROME1",
+      modality,
+      // A fractional suffix preserves frame order without colliding with the
+      // next single-frame file's instance number when sources are combined.
+      instanceNumber: baseInstance + frame / Math.max(frameCount, 1),
+      sliceLocation: baseSliceLocation,
+      seriesUid: dataSet.string("x0020000e") ?? "series",
+      seriesDescription: (dataSet.string("x0008103e") ?? "").trim(),
+      patientName: (dataSet.string("x00100010") ?? "").replace(/\^/g, " ").trim(),
+      rescaleUnit: modality === "CT" ? "HU" : "",
+    });
   }
 
-  const wc = firstNum(dataSet, "x00281050", (min + max) / 2);
-  const ww = firstNum(dataSet, "x00281051", Math.max(1, max - min));
-
-  return {
-    rows,
-    cols,
-    pixels,
-    min,
-    max,
-    windowCenter: wc,
-    windowWidth: ww,
-    invert: photometric === "MONOCHROME1",
-    modality: (dataSet.string("x00080060") ?? "").trim(),
-    instanceNumber: dataSet.intString("x00200013") ?? 0,
-    sliceLocation: safeFloat(dataSet, "x00201041"),
-    seriesUid: dataSet.string("x0020000e") ?? "series",
-    seriesDescription: (dataSet.string("x0008103e") ?? "").trim(),
-    patientName: (dataSet.string("x00100010") ?? "").replace(/\^/g, " ").trim(),
-    rescaleUnit: (dataSet.string("x00080060") ?? "").trim() === "CT" ? "HU" : "",
-  };
+  return frames;
 }
 
 function safeFloat(dataSet: DataSet, tag: string): number | null {

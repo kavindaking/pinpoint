@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { frameCount, type RadCase } from "../types";
-import { CompressedDicomError, parseDicom, renderToImageData, type DicomImage } from "../lib/dicom";
+import { CompressedDicomError, parseDicomFrames, renderToImageData, type DicomImage } from "../lib/dicom";
 import { ArrowsIn, CircleHalf, MagnifyingGlassMinus, MagnifyingGlassPlus } from "./icons";
 
 export interface ViewerPoint {
@@ -129,9 +129,9 @@ export function ImageViewer({
               if (typeof source === "string") {
                 const res = await fetch(source);
                 if (!res.ok) continue;
-                frames.push(parseDicom(await res.arrayBuffer()));
+                frames.push(...parseDicomFrames(await res.arrayBuffer()));
               } else {
-                frames.push(parseDicom(await source.arrayBuffer()));
+                frames.push(...parseDicomFrames(await source.arrayBuffer()));
               }
             } catch (err) {
               if (err instanceof CompressedDicomError) compressed = true;

@@ -16,7 +16,7 @@ import type { ViewerPoint } from "./ImageViewer";
 import type { RadCase } from "../types";
 import {
   CompressedDicomError,
-  parseDicom,
+  parseDicomFrames,
   renderToImageData,
   WL_PRESETS,
   type DicomImage,
@@ -456,7 +456,7 @@ export function DicomCaseViewer({
             typeof source === "string"
               ? await (await fetch(source)).arrayBuffer()
               : await source.arrayBuffer();
-          parsed.push(parseDicom(buffer));
+          parsed.push(...parseDicomFrames(buffer));
         } catch (err) {
           if (err instanceof CompressedDicomError) compressed = true;
         }

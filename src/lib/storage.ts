@@ -1,6 +1,7 @@
 import type { RadCase, RoundRecord, ScoringSettings } from "../types";
 import { DEFAULT_SCORING, inferSubspecialty } from "../types";
 import { SEED_CASES } from "../data/seedCases";
+import { parseDicomFrames } from "./dicom";
 
 /**
  * Persistence is fully client-side so the app can be hosted as static files:
@@ -51,10 +52,28 @@ export async function getAllCases(): Promise<RadCase[]> {
   const all = await tx<RadCase[]>("readonly", (s) => s.getAll() as IDBRequest<RadCase[]>);
   // Cases saved before the subspecialty field existed get a best-guess value.
   for (const c of all) {
+    let changed = false;
     if (!c.subspecialty) {
       c.subspecialty = inferSubspecialty(c.bodyRegion);
-      await saveCase(c);
+      changed = true;
     }
+    // Cases imported before multi-frame support recorded one blob as one
+    // slice. Recount the embedded frames from the retained original files.
+    if (c.dicomBlobs?.length && !c.dicomFrameCount) {
+      let count = 0;
+      for (const blob of c.dicomBlobs) {
+        try {
+          count += parseDicomFrames(await blob.arrayBuffer()).length;
+        } catch {
+          /* Leave unreadable legacy files unchanged. */
+        }
+      }
+      if (count > 0) {
+        c.dicomFrameCount = count;
+        changed = true;
+      }
+    }
+    if (changed) await saveCase(c);
   }
   return all.sort((a, b) => a.createdAt - b.createdAt);
 }

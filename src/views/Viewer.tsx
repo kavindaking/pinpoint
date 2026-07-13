@@ -4,7 +4,7 @@ import { DicomStudyViewer } from "../components/DicomStudyViewer";
 import { Button } from "../components/ui";
 import {
   CompressedDicomError,
-  parseDicom,
+  parseDicomFrames,
   renderToImageData,
   type DicomImage,
 } from "../lib/dicom";
@@ -28,11 +28,11 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
     setLoading(true);
     setError(null);
     try {
-      const parsed: { image: DicomImage; blob: Blob }[] = [];
+      const parsed: { images: DicomImage[]; blob: Blob }[] = [];
       let compressed = false;
       for (const file of chosen) {
         try {
-          parsed.push({ image: parseDicom(await file.arrayBuffer()), blob: file });
+          parsed.push({ images: parseDicomFrames(await file.arrayBuffer()), blob: file });
         } catch (err) {
           if (err instanceof CompressedDicomError) compressed = true;
         }
@@ -45,11 +45,12 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
         );
         return;
       }
-      parsed.sort((a, b) => a.image.instanceNumber - b.image.instanceNumber);
-      setImages(parsed.map((entry) => entry.image));
+      parsed.sort((a, b) => a.images[0].instanceNumber - b.images[0].instanceNumber);
+      const decodedImages = parsed.flatMap((entry) => entry.images);
+      setImages(decodedImages);
       setDicomBlobs(parsed.map((entry) => entry.blob));
       if (compressed) {
-        setError(`${parsed.length} slices loaded. Some slices were skipped because they were compressed.`);
+        setError(`${decodedImages.length} slices loaded. Some files were skipped because they were compressed.`);
       }
     } finally {
       setLoading(false);
@@ -108,6 +109,7 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
       difficulty: "medium",
       regions: [],
       dicomBlobs,
+      dicomFrameCount: images.length,
       posterBlob,
       createdAt: Date.now(),
     });

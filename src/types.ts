@@ -88,6 +88,8 @@ export interface RadCase {
   dicomUrls?: string[];
   /** Uploaded DICOM slices retained in their original form in IndexedDB. */
   dicomBlobs?: Blob[];
+  /** Decoded frame total; may exceed dicomBlobs.length for multi-frame files. */
+  dicomFrameCount?: number;
   /** Poster image (a rendered slice) so the case card can show a thumbnail. */
   posterUrl?: string;
   /** Rendered poster for an uploaded DICOM series. */
@@ -100,6 +102,7 @@ export interface RadCase {
 
 /** Number of slices in a case; 1 for single-image cases. */
 export function frameCount(c: RadCase): number {
+  if (c.dicomFrameCount && c.dicomFrameCount > 0) return c.dicomFrameCount;
   if (c.dicomBlobs?.length) return c.dicomBlobs.length;
   if (c.dicomUrls?.length) return c.dicomUrls.length;
   if (c.imageBlobs?.length) return c.imageBlobs.length;

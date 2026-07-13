@@ -24,7 +24,7 @@ import { ShapeSvg } from "../components/ShapeSvg";
 import { Button, Field, Panel, Select, inputClass } from "../components/ui";
 import {
   CompressedDicomError,
-  parseDicom,
+  parseDicomFrames,
   renderToImageData,
   type DicomImage,
 } from "../lib/dicom";
@@ -84,6 +84,9 @@ export function Editor({
     existing?.imageBlobs ?? (existing?.imageBlob ? [existing.imageBlob] : []),
   );
   const [dicomBlobs, setDicomBlobs] = useState<Blob[]>(existing?.dicomBlobs ?? []);
+  const [dicomFrameCount, setDicomFrameCount] = useState(
+    existing?.dicomFrameCount ?? existing?.dicomBlobs?.length ?? 0,
+  );
   const [dicomPoster, setDicomPoster] = useState<Blob | undefined>(existing?.posterBlob);
   const [regions, setRegions] = useState<CaseRegion[]>(existing?.regions ?? []);
   const [slice, setSlice] = useState(0);
@@ -124,9 +127,14 @@ export function Editor({
       imageBlobs: hasImages && blobs.length > 1 ? blobs : undefined,
       dicomUrls: replacingExisting ? undefined : existing?.dicomUrls,
       dicomBlobs: hasDicom ? dicomBlobs : replacingExisting ? undefined : existing?.dicomBlobs,
+      dicomFrameCount: hasDicom
+        ? dicomFrameCount
+        : replacingExisting
+          ? undefined
+          : existing?.dicomFrameCount,
       createdAt: 0,
     };
-  }, [blobs, dicomBlobs, existing]);
+  }, [blobs, dicomBlobs, dicomFrameCount, existing]);
 
   const frames = previewCase ? frameCount(previewCase) : 1;
   const isStack = frames > 1;
@@ -205,11 +213,11 @@ export function Editor({
         setError("Choose either DICOM files or image files, not both at once.");
         return;
       }
-      const parsed: { image: DicomImage; blob: Blob }[] = [];
+      const parsed: { images: DicomImage[]; blob: Blob }[] = [];
       let compressed = false;
       for (const file of dicomFiles) {
         try {
-          parsed.push({ image: parseDicom(await file.arrayBuffer()), blob: file });
+          parsed.push({ images: parseDicomFrames(await file.arrayBuffer()), blob: file });
         } catch (err) {
           if (err instanceof CompressedDicomError) compressed = true;
         }
@@ -222,16 +230,18 @@ export function Editor({
         );
         return;
       }
-      parsed.sort((a, b) => a.image.instanceNumber - b.image.instanceNumber);
+      parsed.sort((a, b) => a.images[0].instanceNumber - b.images[0].instanceNumber);
+      const decodedImages = parsed.flatMap((entry) => entry.images);
       setBlobs([]);
       setDicomBlobs(parsed.map((entry) => entry.blob));
-      setDicomPoster(await makeDicomPoster(parsed[Math.floor(parsed.length / 2)].image));
-      const first = parsed[0].image;
+      setDicomFrameCount(decodedImages.length);
+      setDicomPoster(await makeDicomPoster(decodedImages[Math.floor(decodedImages.length / 2)]));
+      const first = decodedImages[0];
       if (first.modality === "CT") setModality("CT");
       else if (first.modality === "MR") setModality("MRI");
       setError(
         compressed
-          ? `${parsed.length} slices loaded. Some compressed slices were skipped.`
+          ? `${decodedImages.length} slices loaded. Some compressed files were skipped.`
           : null,
       );
       setRegions([]);
@@ -250,6 +260,7 @@ export function Editor({
     setError(null);
     setBlobs(images);
     setDicomBlobs([]);
+    setDicomFrameCount(0);
     setDicomPoster(undefined);
     setRegions([]);
     setPolyPoints([]);
@@ -280,6 +291,11 @@ export function Editor({
       imageBlobs: hasImages && blobs.length > 1 ? blobs : undefined,
       dicomUrls: replacingExisting ? undefined : existing?.dicomUrls,
       dicomBlobs: hasDicom ? dicomBlobs : replacingExisting ? undefined : existing?.dicomBlobs,
+      dicomFrameCount: hasDicom
+        ? dicomFrameCount
+        : replacingExisting
+          ? undefined
+          : existing?.dicomFrameCount,
       posterUrl: replacingExisting ? undefined : existing?.posterUrl,
       posterBlob: hasDicom ? dicomPoster : replacingExisting ? undefined : existing?.posterBlob,
       credit: credit.trim() || undefined,

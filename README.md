@@ -30,7 +30,8 @@ Dark-first UI designed for reading-room conditions, with a light theme toggle.
   slice with the finding. A curated normal-brain CT series ships as a DICOM example.
 - **Case builder**: add cases from de-identified DICOM, PNG, JPG, or WebP files. Upload a
   single image or several files at once for a scrollable stack. DICOM slices are parsed and
-  ordered by instance number. Draw the ground truth directly on the image
+  ordered by instance number, and multi-frame `.dcm` files expand into all embedded frames.
+  Draw the ground truth directly on the image
   with ellipse, box, freehand polygon, or point tools; multiple regions per case, on any
   slice, are supported. Metadata: subspecialty, modality, body region, difficulty, clinical
   stem, teaching point, image credit.
