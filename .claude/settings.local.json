@@ -126,7 +126,16 @@
       "Bash(curl -s -o /dev/null -w \"root:%{http_code}\\\\n\" http://localhost:5173/)",
       "Bash(curl -s -o /dev/null -w \"root:%{http_code}\\\\n\" http://127.0.0.1:5173/)",
       "Bash(curl -s -o /dev/null -w \"slice:%{http_code}\\\\n\" http://127.0.0.1:5173/cases/brain-v2/slice-16.png)",
-      "Bash(git -c core.hooksPath=/dev/null commit -q -m 'Fix elongated CT brain stack: anamorphic-correct slices and re-place region *)"
+      "Bash(git -c core.hooksPath=/dev/null commit -q -m 'Fix elongated CT brain stack: anamorphic-correct slices and re-place region *)",
+      "Bash(curl -s -o live-slice.png -w \"new slice: %{http_code}\\\\n\" \"https://pinpoint-jade.vercel.app/cases/brain-v2/slice-16.png\")",
+      "Bash(curl -s -o /dev/null -w \"old path \\(want 404\\): %{http_code}\\\\n\" \"https://pinpoint-jade.vercel.app/cases/brain/slice-16.png\")",
+      "Bash(python3 -c \"from PIL import Image; im=Image.open\\('live-slice.png'\\); print\\('live image size:', im.size, '-> aspect h/w', round\\(im.size[1]/im.size[0],3\\)\\)\")",
+      "Bash(cp /tmp/dcmdump.mjs /Users/jay/Documents/CODE/Claude/Radiology/dcmdump.mjs)",
+      "Bash(node dcmdump.mjs)",
+      "Bash(python3 -c \"import pydicom; print\\('pydicom', pydicom.__version__\\)\")",
+      "Bash(git -C /Users/jay/Documents/CODE/Claude/Radiology log --oneline --all --diff-filter=A -- '*.mjs' '*makedcm*' '*gen*dicom*')",
+      "Bash(python3 -c \"from PIL import Image; print\\(Image.open\\('public/cases/ct-head-poster.png'\\).size\\)\")",
+      "Bash(git -c core.hooksPath=/dev/null commit -q -m 'Render scrollable CT case through the DICOM pipeline in the quiz *)"
     ]
   }
 }

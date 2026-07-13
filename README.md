@@ -21,10 +21,13 @@ Dark-first UI designed for reading-room conditions, with a light theme toggle.
 - **Two case pools**: a curated **Library** of bundled, openly licensed teaching cases
   (read-only, always restorable) and **My cases** for your own uploads, kept only in your
   browser. Rounds can draw from either pool or both.
-- **Scrollable CT/MRI stacks**: cases can hold a multi-slice image stack. Scroll with the
-  mouse wheel or the side slider to find the right level, then click. Ground truth is
-  per-slice, scoring is slice-aware (a click on the wrong slice misses), and the reveal
-  jumps to the slice with the finding. A curated normal-brain CT stack ships as an example.
+- **Scrollable CT/MRI stacks, rendered like a workstation**: multi-slice cases play in a
+  PACS-style viewport. Scroll with the mouse wheel or the side slider to find the level,
+  then click. A DICOM-backed case (`dicomUrls`) is drawn through the same DICOM pipeline as
+  the Viewer tab, with true window/level on right-drag, an HU readout, invert, and square
+  pixel spacing so the anatomy keeps its real proportions. Ground truth is per-slice,
+  scoring is slice-aware (a click on the wrong slice misses), and the reveal jumps to the
+  slice with the finding. A curated normal-brain CT series ships as a DICOM example.
 - **Case builder**: add cases from any de-identified PNG/JPG. Upload a single image, or
   several files at once for a scrollable stack. Draw the ground truth directly on the image
   with ellipse, box, freehand polygon, or point tools; multiple regions per case, on any
@@ -123,16 +126,17 @@ All seed images are de-identified, openly licensed teaching files from Wikimedia
 | Epidural hematoma | [Traumatic acute epidual hematoma.jpg](https://commons.wikimedia.org/wiki/File:Traumatic_acute_epidual_hematoma.jpg) | Jpogi | CC BY-SA 3.0 |
 | Shoulder dislocation | [Shoulder dislocation, anteroposterior before reduction.jpg](https://commons.wikimedia.org/wiki/File:Shoulder_dislocation,_anteroposterior_before_reduction.jpg) | Mikael Häggström, M.D. | CC0 |
 | Hip fracture | [X-ray of a comminuted hip fracture.jpg](https://commons.wikimedia.org/wiki/File:X-ray_of_a_comminuted_hip_fracture.jpg) | Memon, Patel and Juva | CC BY 4.0 |
-| Lateral ventricles (CT stack) | [CT of a normal brain, axial 14-23.png](https://commons.wikimedia.org/wiki/File:CT_of_a_normal_brain,_axial_16.png) | Mikael Häggström, M.D. | CC0 |
+| Lateral ventricles (CT DICOM series) | [CT of a normal brain, axial 14-23.png](https://commons.wikimedia.org/wiki/File:CT_of_a_normal_brain,_axial_16.png) | Mikael Häggström, M.D. | CC0 |
 | Small bowel obstruction | [Upright X-ray demonstrating small bowel obstruction.jpg](https://commons.wikimedia.org/wiki/File:Upright_X-ray_demonstrating_small_bowel_obstruction.jpg) | James Heilman, MD | CC BY-SA 3.0 |
 | Abdominal aortic aneurysm (CT) | [Contrast-enhanced CT scan demonstrating abdominal aortic aneurysm.jpg](https://commons.wikimedia.org/wiki/File:Contrast-enhanced_CT_scan_demonstrating_abdominal_aortic_aneurysm.jpg) | James Heilman, MD | CC BY-SA 4.0 |
 | Abdominal aortic aneurysm (US) | [Ultrasonography of abdominal aortic aneurysm in axial plane.jpg](https://commons.wikimedia.org/wiki/File:Ultrasonography_of_abdominal_aortic_aneurysm_in_axial_plane.jpg) | Mikael Häggström, M.D. | CC0 |
 | Pulmonary edema | [Chest XR of HAPE.png](https://commons.wikimedia.org/wiki/File:Chest_XR_of_HAPE.png) | Maryrosegrant | CC BY-SA 4.0 |
 | Barton fracture | [Radiograph of Barton's fracture.jpg](https://commons.wikimedia.org/wiki/File:Radiograph_of_Barton%27s_fracture.jpg) | Mikael Häggström, M.D. | CC0 |
 
-The CT stack is ten consecutive axial slices, cropped to the axial panel and framed as a
-cross-sectional anatomy localization task (not a pathology case). The DICOM viewer's sample
-series (`public/samples/dicom/`) is those same slices re-encoded as uncompressed CT DICOM.
+The CT case is ten consecutive axial slices, aspect-corrected and re-encoded as uncompressed
+CT DICOM with square pixel spacing (`public/samples/dicom/`), framed as a cross-sectional
+anatomy localization task (not a pathology case). It plays through the DICOM pipeline, and
+the same series is the Viewer tab's sample study.
 Radiopaedia and DICOMTube content is not openly licensed for reuse in another app, so all
 bundled imagery comes from Wikimedia Commons. Ground-truth regions and teaching points were
 authored for this app and are approximate;

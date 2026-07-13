@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { frameCount, type RadCase } from "../types";
+import { CompressedDicomError, parseDicom, renderToImageData, type DicomImage } from "../lib/dicom";
 import { ArrowsIn, CircleHalf, MagnifyingGlassMinus, MagnifyingGlassPlus } from "./icons";
 
 export interface ViewerPoint {
@@ -17,16 +18,19 @@ const ZOOM_MAX = 8;
  * viewBox. Pointer events map 1:1 to normalized (0..1) image coordinates,
  * independent of display size.
  *
- * Multi-slice stacks (CT/MRI) are navigated with the mouse wheel or the
- * side slider; every pointer and overlay callback carries the active slice
- * so scoring and drawing stay slice-aware.
+ * Two source kinds render into the same viewport:
+ *   - PNG/JPG frames (single image or an uploaded stack) drawn as <img>;
+ *   - DICOM series (`dicomUrls`) parsed with dicom-parser and drawn to a
+ *     <canvas> with true window/level, exactly like the Viewer tab. DICOM
+ *     carries square pixel spacing, so the head renders at its real
+ *     proportions rather than a stretched export.
  *
- * `pacs` turns on a reading-room viewport: zoom (ctrl+scroll or pinch, or
- * the toolbar), pan by dragging while zoomed, windowing-style brightness
- * and contrast on right-drag, and invert. The image and the SVG overlay
- * share one transformed wrapper, so normalized click coordinates, and with
- * them the scoring, stay exact at any zoom or pan. The tonal filter is
- * applied to the images only, so revealed regions keep their true colors.
+ * `pacs` turns on a reading-room viewport: zoom (ctrl+scroll or the
+ * toolbar), pan by dragging while zoomed, window/level on right-drag
+ * (brightness/contrast for images, real center/width for DICOM), invert,
+ * and, for DICOM, an HU readout under the cursor. The image/canvas and the
+ * SVG overlay share one transformed wrapper, so click coordinates, and with
+ * them the scoring, stay exact at any zoom or pan.
  */
 export function ImageViewer({
   radCase,
@@ -59,8 +63,13 @@ export function ImageViewer({
   cursor?: string;
   maxHeight?: string;
 }) {
+  const dicomSources = radCase.dicomUrls;
+  const dicomMode = !!dicomSources?.length;
   const frames = frameCount(radCase);
+
   const [srcs, setSrcs] = useState<string[]>([]);
+  const [dicom, setDicom] = useState<DicomImage[] | null>(null);
+  const [dicomError, setDicomError] = useState<string | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [slice, setSlice] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -68,8 +77,14 @@ export function ImageViewer({
   const [bright, setBright] = useState(100);
   const [contrast, setContrast] = useState(100);
   const [invert, setInvert] = useState(false);
+  const [center, setCenter] = useState(40);
+  const [width, setWidth] = useState(160);
+  const [hu, setHu] = useState<{ value: number; unit: string } | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const idRef = useRef<ImageData | null>(null);
   const downAt = useRef<{ x: number; y: number } | null>(null);
   const downClient = useRef<{ x: number; y: number } | null>(null);
   const lastClient = useRef<{ x: number; y: number } | null>(null);
@@ -87,13 +102,57 @@ export function ImageViewer({
     setInvert(false);
   }, []);
 
-  // Resolve every frame to a displayable URL; revoke object URLs on change.
+  // Resolve the source frames. DICOM series are fetched and parsed; image
+  // frames become object URLs / static paths. Object URLs are revoked on
+  // change.
   useEffect(() => {
     setSize(null);
     setSlice(0);
     onSlice?.(0);
     resetView();
     resetTone();
+    setHu(null);
+    setDicom(null);
+    setDicomError(null);
+    idRef.current = null;
+
+    if (dicomSources?.length) {
+      let cancelled = false;
+      (async () => {
+        try {
+          const frames: DicomImage[] = [];
+          let compressed = false;
+          for (const url of dicomSources) {
+            const res = await fetch(url);
+            if (!res.ok) continue;
+            try {
+              frames.push(parseDicom(await res.arrayBuffer()));
+            } catch (err) {
+              if (err instanceof CompressedDicomError) compressed = true;
+            }
+          }
+          if (cancelled) return;
+          if (frames.length === 0) {
+            setDicomError(compressed ? "This DICOM series is compressed and cannot be shown." : "Could not read this DICOM series.");
+            return;
+          }
+          frames.sort((a, b) => a.instanceNumber - b.instanceNumber);
+          const first = frames[0];
+          setDicom(frames);
+          setCenter(first.windowCenter);
+          setWidth(first.windowWidth);
+          setInvert(first.invert);
+          setSize({ w: first.cols, h: first.rows });
+          onImageSize?.(first.cols, first.rows);
+        } catch {
+          if (!cancelled) setDicomError("Could not load this DICOM series.");
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
     if (radCase.imageBlobs?.length) {
       const urls = radCase.imageBlobs.map((b) => URL.createObjectURL(b));
       setSrcs(urls);
@@ -112,6 +171,30 @@ export function ImageViewer({
     // Callback identities are stable enough; excluding them avoids reset loops.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [radCase]);
+
+  // Draw the active DICOM slice with the current window into the canvas. The
+  // canvas is sized to the image's native pixels and stretched by CSS to the
+  // aspect-matched container, so no anamorphic distortion is introduced.
+  useEffect(() => {
+    if (!dicomMode || !dicom) return;
+    const frame = dicom[slice];
+    const cvs = canvasRef.current;
+    if (!frame || !cvs) return;
+    if (cvs.width !== frame.cols || cvs.height !== frame.rows) {
+      cvs.width = frame.cols;
+      cvs.height = frame.rows;
+      idRef.current = null;
+    }
+    const ctx = cvs.getContext("2d");
+    if (!ctx) return;
+    let id = idRef.current;
+    if (!id || id.width !== frame.cols) {
+      id = ctx.createImageData(frame.cols, frame.rows);
+      idRef.current = id;
+    }
+    renderToImageData(frame, center, width, invert, id);
+    ctx.putImageData(id, 0, 0);
+  }, [dicomMode, dicom, slice, center, width, invert]);
 
   const changeSlice = useCallback(
     (next: number) => {
@@ -133,20 +216,16 @@ export function ImageViewer({
     }
   }, [jumpTo, changeSlice, resetView]);
 
-  const zoomBy = useCallback(
-    (factor: number) => {
-      setZoom((z) => {
-        const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z * factor));
-        if (next === 1) setPan({ x: 0, y: 0 });
-        return next;
-      });
-    },
-    [],
-  );
+  const zoomBy = useCallback((factor: number) => {
+    setZoom((z) => {
+      const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z * factor));
+      if (next === 1) setPan({ x: 0, y: 0 });
+      return next;
+    });
+  }, []);
 
-  // Wheel scrubs through the stack; ctrl+wheel (and trackpad pinch, which
-  // browsers report as ctrl+wheel) zooms in PACS mode. Attached natively so
-  // it can preventDefault (React's onWheel is passive).
+  // Wheel scrubs the stack; ctrl+wheel (and trackpad pinch, reported as
+  // ctrl+wheel) zooms in PACS mode. Native listener so it can preventDefault.
   useEffect(() => {
     const el = containerRef.current;
     if (!el || (frames <= 1 && !pacs)) return;
@@ -184,9 +263,29 @@ export function ImageViewer({
     return { x, y };
   }, []);
 
+  const readHu = useCallback(
+    (e: PointerEvent) => {
+      if (!dicomMode || !dicom) return;
+      const frame = dicom[slice];
+      const p = toNormalized(e);
+      if (!frame || !p) {
+        setHu(null);
+        return;
+      }
+      const px = Math.floor(p.x * frame.cols);
+      const py = Math.floor(p.y * frame.rows);
+      if (px < 0 || px >= frame.cols || py < 0 || py >= frame.rows) {
+        setHu(null);
+        return;
+      }
+      setHu({ value: frame.pixels[py * frame.cols + px], unit: frame.rescaleUnit });
+    },
+    [dicomMode, dicom, slice, toNormalized],
+  );
+
   const handleDown = (e: PointerEvent) => {
     if (pacs && e.button === 2) {
-      // Right-drag adjusts the window (brightness/contrast).
+      // Right-drag adjusts the window (level/brightness, width/contrast).
       windowing.current = true;
       lastClient.current = { x: e.clientX, y: e.clientY };
       svgRef.current?.setPointerCapture(e.pointerId);
@@ -207,13 +306,20 @@ export function ImageViewer({
       const dx = e.clientX - lastClient.current.x;
       const dy = e.clientY - lastClient.current.y;
       lastClient.current = { x: e.clientX, y: e.clientY };
-      setBright((b) => Math.max(20, Math.min(300, b - dy * 0.6)));
-      setContrast((c) => Math.max(20, Math.min(300, c + dx * 0.6)));
+      if (dicomMode) {
+        setWidth((w) => Math.max(1, w + dx * 2));
+        setCenter((c) => c - dy * 2);
+      } else {
+        setBright((b) => Math.max(20, Math.min(300, b - dy * 0.6)));
+        setContrast((c) => Math.max(20, Math.min(300, c + dx * 0.6)));
+      }
       return;
     }
-    if (!downAt.current) return;
-    // Dragging while zoomed pans the viewport (only when nobody else wants
-    // the drag, i.e. outside the region editor).
+    if (!downAt.current) {
+      readHu(e);
+      return;
+    }
+    // Dragging while zoomed pans the viewport (outside the region editor).
     if (pacs && !onDrag && zoom > 1 && lastClient.current) {
       const dx = e.clientX - lastClient.current.x;
       const dy = e.clientY - lastClient.current.y;
@@ -221,7 +327,10 @@ export function ImageViewer({
       setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
       return;
     }
-    if (!onDrag?.move) return;
+    if (!onDrag?.move) {
+      readHu(e);
+      return;
+    }
     const p = toNormalized(e);
     if (p) onDrag.move(p, slice);
   };
@@ -241,18 +350,18 @@ export function ImageViewer({
     if (!p || !start) return;
     onDrag?.up?.(p, slice);
     // A tap is a press without meaningful travel, measured in screen pixels
-    // so panning (where the image follows the cursor) cannot count as a tap.
-    const clientTravel = startClient
-      ? Math.hypot(e.clientX - startClient.x, e.clientY - startClient.y)
-      : 0;
+    // so panning cannot count as a tap.
+    const clientTravel = startClient ? Math.hypot(e.clientX - startClient.x, e.clientY - startClient.y) : 0;
     if (onTap && clientTravel < 5 && Math.hypot(p.x - start.x, p.y - start.y) < 0.01) {
       onTap(p, slice);
     }
   };
 
   const isStackView = frames > 1;
-  const toneAdjusted = bright !== 100 || contrast !== 100 || invert;
-  // Preload neighbours so scrubbing does not flash.
+  const toneAdjusted = dicomMode
+    ? dicom != null && (Math.round(center) !== Math.round(dicom[0].windowCenter) || Math.round(width) !== Math.round(dicom[0].windowWidth) || invert !== dicom[0].invert)
+    : bright !== 100 || contrast !== 100 || invert;
+  // Preload neighbours so scrubbing images does not flash.
   const preload = useMemo(() => {
     const set = new Set<number>();
     for (let d = -2; d <= 2; d++) {
@@ -273,7 +382,7 @@ export function ImageViewer({
         style={size ? { aspectRatio: `${size.w} / ${size.h}` } : { minHeight: "16rem" }}
         onContextMenu={pacs ? (e) => e.preventDefault() : undefined}
       >
-        {/* Image and overlay share one transform so clicks stay calibrated. */}
+        {/* Image/canvas and overlay share one transform so clicks stay calibrated. */}
         <div
           className="absolute inset-0"
           style={{
@@ -281,32 +390,38 @@ export function ImageViewer({
             transformOrigin: "center",
           }}
         >
-          <div
-            className="absolute inset-0"
-            style={{
-              filter: `brightness(${bright / 100}) contrast(${contrast / 100}) invert(${invert ? 1 : 0})`,
-            }}
-          >
-            {srcs.map((s, i) => (
-              <img
-                key={s}
-                src={preload.has(i) || i === slice ? s : undefined}
-                data-src={s}
-                alt={i === slice ? `${radCase.modality}, slice ${i + 1} of ${frames}` : ""}
-                draggable={false}
-                onLoad={(e) => {
-                  if (size) return;
-                  const img = e.currentTarget;
-                  if (img.naturalWidth) {
-                    setSize({ w: img.naturalWidth, h: img.naturalHeight });
-                    onImageSize?.(img.naturalWidth, img.naturalHeight);
-                  }
-                }}
-                className="absolute inset-0 block h-full w-full select-none"
-                style={{ opacity: i === slice ? 1 : 0 }}
-              />
-            ))}
-          </div>
+          {dicomMode ? (
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 block h-full w-full select-none"
+              style={{ imageRendering: zoom > 2 ? "pixelated" : "auto" }}
+            />
+          ) : (
+            <div
+              className="absolute inset-0"
+              style={{ filter: `brightness(${bright / 100}) contrast(${contrast / 100}) invert(${invert ? 1 : 0})` }}
+            >
+              {srcs.map((s, i) => (
+                <img
+                  key={s}
+                  src={preload.has(i) || i === slice ? s : undefined}
+                  data-src={s}
+                  alt={i === slice ? `${radCase.modality}, slice ${i + 1} of ${frames}` : ""}
+                  draggable={false}
+                  onLoad={(e) => {
+                    if (size) return;
+                    const img = e.currentTarget;
+                    if (img.naturalWidth) {
+                      setSize({ w: img.naturalWidth, h: img.naturalHeight });
+                      onImageSize?.(img.naturalWidth, img.naturalHeight);
+                    }
+                  }}
+                  className="absolute inset-0 block h-full w-full select-none"
+                  style={{ opacity: i === slice ? 1 : 0 }}
+                />
+              ))}
+            </div>
+          )}
           {size && (
             <svg
               ref={svgRef}
@@ -317,6 +432,7 @@ export function ImageViewer({
               onPointerDown={handleDown}
               onPointerMove={handleMove}
               onPointerUp={handleUp}
+              onPointerLeave={() => setHu(null)}
             >
               {overlay?.(size.w, size.h, slice)}
             </svg>
@@ -324,6 +440,16 @@ export function ImageViewer({
         </div>
 
         {/* Viewport chrome, outside the transform */}
+        {dicomError && (
+          <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-white/70">
+            {dicomError}
+          </div>
+        )}
+        {dicomMode && !dicom && !dicomError && (
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-white/60">
+            Loading series…
+          </div>
+        )}
         {isStackView && (
           <div className="pointer-events-none absolute left-2 top-2 rounded-(--radius-ctl) bg-black/55 px-2 py-1 font-mono text-xs text-white/90">
             {slice + 1} / {frames}
@@ -334,7 +460,29 @@ export function ImageViewer({
             {Math.round(zoom * 100)}%
           </div>
         )}
-        {pacs && toneAdjusted && (
+        {pacs && dicomMode && dicom && (
+          <button
+            type="button"
+            onClick={() => {
+              setCenter(dicom[0].windowCenter);
+              setWidth(dicom[0].windowWidth);
+              setInvert(dicom[0].invert);
+            }}
+            title="Reset window/level"
+            className={`absolute bottom-2 left-2 rounded-(--radius-ctl) bg-black/55 px-2 py-1 text-left font-mono text-[11px] leading-tight text-white/85 ${
+              toneAdjusted ? "cursor-pointer hover:bg-black/75" : "pointer-events-none"
+            }`}
+          >
+            <div>W {Math.round(width)} · L {Math.round(center)}</div>
+            {hu && (
+              <div className="text-white/60">
+                {Math.round(hu.value)}
+                {hu.unit && ` ${hu.unit}`}
+              </div>
+            )}
+          </button>
+        )}
+        {pacs && !dicomMode && toneAdjusted && (
           <button
             type="button"
             onClick={resetTone}

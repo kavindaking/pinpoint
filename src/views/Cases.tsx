@@ -20,7 +20,12 @@ import { CloudPanel } from "../components/CloudPanel";
 function CaseThumb({ radCase }: { radCase: RadCase }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
-    // First frame stands in for the whole case.
+    // A poster (or the first frame) stands in for the whole case; DICOM
+    // series can't be shown as an <img>, so they carry a rendered poster.
+    if (radCase.posterUrl) {
+      setSrc(radCase.posterUrl);
+      return;
+    }
     if (radCase.imageBlobs?.length) {
       const url = URL.createObjectURL(radCase.imageBlobs[0]);
       setSrc(url);
