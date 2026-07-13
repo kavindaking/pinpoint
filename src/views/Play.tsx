@@ -319,7 +319,21 @@ export function Play({
 
             <div className="mt-4 flex items-center justify-between gap-3">
               {current.credit ? (
-                <p className="text-xs text-ink-faint">Image: {current.credit}</p>
+                <p className="text-xs text-ink-faint">
+                  Image:{" "}
+                  {current.creditUrl ? (
+                    <a
+                      href={current.creditUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline decoration-transparent underline-offset-2 transition-colors hover:text-ink hover:decoration-current"
+                    >
+                      {current.credit}
+                    </a>
+                  ) : (
+                    current.credit
+                  )}
+                </p>
               ) : (
                 <span />
               )}

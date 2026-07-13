@@ -95,6 +95,8 @@ export interface RadCase {
   /** Rendered poster for an uploaded DICOM series. */
   posterBlob?: Blob;
   credit?: string;
+  /** Link to the original image/file page for attribution and licence details. */
+  creditUrl?: string;
   /** Curated bundled case. Absent/false means a user's personal case. */
   seed?: boolean;
   createdAt: number;

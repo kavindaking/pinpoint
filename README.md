@@ -18,7 +18,7 @@ Dark-first UI designed for reading-room conditions, with a light theme toggle.
 - **Precision scoring**: full points inside the ground-truth region, partial points scaled
   by distance for close misses, zero beyond a configurable threshold. All thresholds are
   adjustable from the home screen (Scoring panel).
-- **Two case pools**: a curated **Library** of bundled, openly licensed teaching cases
+- **Two case pools**: a curated **Library** of 62 bundled, openly licensed teaching cases
   (read-only, always restorable) and **My cases** for your own uploads, kept only in your
   browser. Rounds can draw from either pool or both.
 - **Scrollable CT/MRI stacks, rendered like a workstation**: multi-slice cases play in a
@@ -123,6 +123,10 @@ Only upload images that are de-identified and that you have the right to use.
 ## Bundled case images
 
 All seed images are de-identified, openly licensed teaching files from Wikimedia Commons.
+The original 12 cases are listed below. The additional 50-case expansion keeps its complete,
+machine-readable source-page, creator, and licence metadata in
+[`public/cases/expanded/sources.json`](public/cases/expanded/sources.json); each case also
+links back to its Commons file page in study mode and after quiz reveal.
 
 | Case | Source file | Author | License |
 | --- | --- | --- | --- |

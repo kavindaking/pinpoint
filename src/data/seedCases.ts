@@ -1,4 +1,5 @@
 import type { RadCase } from "../types";
+import { EXPANDED_CASES } from "./expandedCases";
 
 /**
  * Bundled teaching cases. All images are de-identified, openly licensed
@@ -290,4 +291,5 @@ export const SEED_CASES: RadCase[] = [
     seed: true,
     createdAt: 12,
   },
+  ...EXPANDED_CASES,
 ];

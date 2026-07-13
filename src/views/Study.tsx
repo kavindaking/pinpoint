@@ -119,7 +119,23 @@ export function Study({
 
       <div className="rounded-(--radius-panel) border border-line bg-surface p-4">
         <p className="max-w-[70ch] text-sm leading-relaxed text-ink-dim">{current.explanation}</p>
-        {current.credit && <p className="mt-2 text-xs text-ink-faint">Image: {current.credit}</p>}
+        {current.credit && (
+          <p className="mt-2 text-xs text-ink-faint">
+            Image:{" "}
+            {current.creditUrl ? (
+              <a
+                href={current.creditUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-transparent underline-offset-2 transition-colors hover:text-ink hover:decoration-current"
+              >
+                {current.credit}
+              </a>
+            ) : (
+              current.credit
+            )}
+          </p>
+        )}
       </div>
     </div>
   );
