@@ -28,8 +28,9 @@ Dark-first UI designed for reading-room conditions, with a light theme toggle.
   pixel spacing so the anatomy keeps its real proportions. Ground truth is per-slice,
   scoring is slice-aware (a click on the wrong slice misses), and the reveal jumps to the
   slice with the finding. A curated normal-brain CT series ships as a DICOM example.
-- **Case builder**: add cases from any de-identified PNG/JPG. Upload a single image, or
-  several files at once for a scrollable stack. Draw the ground truth directly on the image
+- **Case builder**: add cases from de-identified DICOM, PNG, JPG, or WebP files. Upload a
+  single image or several files at once for a scrollable stack. DICOM slices are parsed and
+  ordered by instance number. Draw the ground truth directly on the image
   with ellipse, box, freehand polygon, or point tools; multiple regions per case, on any
   slice, are supported. Metadata: subspecialty, modality, body region, difficulty, clinical
   stem, teaching point, image credit.
@@ -75,7 +76,7 @@ time and answer quality.
 
 ## Adding cases
 
-1. **Cases > New case**, drop in a de-identified PNG or JPG.
+1. **Cases > New case**, drop in de-identified DICOM, PNG, JPG, or WebP files.
 2. Pick a tool and draw the abnormality region (ellipse, box, freehand outline, or point).
    Add more regions if the case has several findings.
 3. Fill in the finding name, an optional clinical stem, and a one-line teaching point.

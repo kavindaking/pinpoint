@@ -22,6 +22,12 @@ import {
 import { ImageViewer, type ViewerPoint } from "../components/ImageViewer";
 import { ShapeSvg } from "../components/ShapeSvg";
 import { Button, Field, Panel, Select, inputClass } from "../components/ui";
+import {
+  CompressedDicomError,
+  parseDicom,
+  renderToImageData,
+  type DicomImage,
+} from "../lib/dicom";
 
 type Tool = "point" | "ellipse" | "rect" | "polygon";
 
@@ -34,6 +40,27 @@ const TOOLS: { id: Tool; label: string; icon: typeof Circle }[] = [
 
 let regionCounter = 0;
 const newRegionId = () => `region-${Date.now()}-${regionCounter++}`;
+
+async function makeDicomPoster(image: DicomImage): Promise<Blob | undefined> {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.cols;
+  canvas.height = image.rows;
+  const context = canvas.getContext("2d");
+  if (!context) return undefined;
+  const imageData = context.createImageData(image.cols, image.rows);
+  renderToImageData(
+    image,
+    image.windowCenter,
+    image.windowWidth,
+    image.invert,
+    imageData,
+  );
+  context.putImageData(imageData, 0, 0);
+  return (
+    (await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))) ??
+    undefined
+  );
+}
 
 export function Editor({
   existing,
@@ -56,6 +83,8 @@ export function Editor({
   const [blobs, setBlobs] = useState<Blob[]>(
     existing?.imageBlobs ?? (existing?.imageBlob ? [existing.imageBlob] : []),
   );
+  const [dicomBlobs, setDicomBlobs] = useState<Blob[]>(existing?.dicomBlobs ?? []);
+  const [dicomPoster, setDicomPoster] = useState<Blob | undefined>(existing?.posterBlob);
   const [regions, setRegions] = useState<CaseRegion[]>(existing?.regions ?? []);
   const [slice, setSlice] = useState(0);
 
@@ -71,13 +100,15 @@ export function Editor({
   // image-related fields matter here; keeping the deps narrow avoids
   // re-mounting the viewer on every metadata keystroke.
   const previewCase: RadCase | null = useMemo(() => {
-    const hasNew = blobs.length > 0;
+    const hasImages = blobs.length > 0;
+    const hasDicom = dicomBlobs.length > 0;
+    const replacingExisting = hasImages || hasDicom;
     const hasExisting =
       existing?.imageUrl ||
       existing?.imageUrls?.length ||
       existing?.dicomUrls?.length ||
       existing?.dicomBlobs?.length;
-    if (!hasNew && !hasExisting) return null;
+    if (!replacingExisting && !hasExisting) return null;
     return {
       id: existing?.id ?? "draft",
       title: "Draft",
@@ -87,15 +118,15 @@ export function Editor({
       subspecialty: "Chest",
       difficulty: "medium",
       regions: [],
-      imageUrl: hasNew ? undefined : existing?.imageUrl,
-      imageUrls: hasNew ? undefined : existing?.imageUrls,
-      imageBlob: hasNew && blobs.length === 1 ? blobs[0] : undefined,
-      imageBlobs: hasNew && blobs.length > 1 ? blobs : undefined,
-      dicomUrls: hasNew ? undefined : existing?.dicomUrls,
-      dicomBlobs: hasNew ? undefined : existing?.dicomBlobs,
+      imageUrl: replacingExisting ? undefined : existing?.imageUrl,
+      imageUrls: replacingExisting ? undefined : existing?.imageUrls,
+      imageBlob: hasImages && blobs.length === 1 ? blobs[0] : undefined,
+      imageBlobs: hasImages && blobs.length > 1 ? blobs : undefined,
+      dicomUrls: replacingExisting ? undefined : existing?.dicomUrls,
+      dicomBlobs: hasDicom ? dicomBlobs : replacingExisting ? undefined : existing?.dicomBlobs,
       createdAt: 0,
     };
-  }, [blobs, existing]);
+  }, [blobs, dicomBlobs, existing]);
 
   const frames = previewCase ? frameCount(previewCase) : 1;
   const isStack = frames > 1;
@@ -162,17 +193,64 @@ export function Editor({
     },
   };
 
-  const handleFiles = (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const images = [...files].filter((f) => f.type.startsWith("image/"));
+    const selected = [...files];
+    const dicomFiles = selected.filter(
+      (file) =>
+        file.name.toLowerCase().endsWith(".dcm") || file.type === "application/dicom",
+    );
+    if (dicomFiles.length > 0) {
+      if (dicomFiles.length !== selected.length) {
+        setError("Choose either DICOM files or image files, not both at once.");
+        return;
+      }
+      const parsed: { image: DicomImage; blob: Blob }[] = [];
+      let compressed = false;
+      for (const file of dicomFiles) {
+        try {
+          parsed.push({ image: parseDicom(await file.arrayBuffer()), blob: file });
+        } catch (err) {
+          if (err instanceof CompressedDicomError) compressed = true;
+        }
+      }
+      if (parsed.length === 0) {
+        setError(
+          compressed
+            ? "These DICOM files are compressed. Please use uncompressed .dcm files."
+            : "No readable DICOM images were found.",
+        );
+        return;
+      }
+      parsed.sort((a, b) => a.image.instanceNumber - b.image.instanceNumber);
+      setBlobs([]);
+      setDicomBlobs(parsed.map((entry) => entry.blob));
+      setDicomPoster(await makeDicomPoster(parsed[Math.floor(parsed.length / 2)].image));
+      const first = parsed[0].image;
+      if (first.modality === "CT") setModality("CT");
+      else if (first.modality === "MR") setModality("MRI");
+      setError(
+        compressed
+          ? `${parsed.length} slices loaded. Some compressed slices were skipped.`
+          : null,
+      );
+      setRegions([]);
+      setPolyPoints([]);
+      setSlice(0);
+      return;
+    }
+
+    const images = selected.filter((file) => file.type.startsWith("image/"));
     if (images.length === 0) {
-      setError("Please choose PNG or JPG images.");
+      setError("Please choose DICOM, PNG, JPG, or WebP files.");
       return;
     }
     // Natural sort by filename so slice-01, slice-02, ... land in order.
     images.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     setError(null);
     setBlobs(images);
+    setDicomBlobs([]);
+    setDicomPoster(undefined);
     setRegions([]);
     setPolyPoints([]);
     setSlice(0);
@@ -183,7 +261,9 @@ export function Editor({
     if (!title.trim()) return setError("Give the case a finding or diagnosis name.");
     if (regions.length === 0) return setError("Mark at least one abnormality region on the image.");
     setError(null);
-    const hasNew = blobs.length > 0;
+    const hasImages = blobs.length > 0;
+    const hasDicom = dicomBlobs.length > 0;
+    const replacingExisting = hasImages || hasDicom;
     onSave({
       id: existing?.id ?? `case-${Date.now()}`,
       title: title.trim(),
@@ -194,14 +274,14 @@ export function Editor({
       subspecialty,
       difficulty,
       regions,
-      imageUrl: hasNew ? undefined : existing?.imageUrl,
-      imageUrls: hasNew ? undefined : existing?.imageUrls,
-      imageBlob: hasNew && blobs.length === 1 ? blobs[0] : undefined,
-      imageBlobs: hasNew && blobs.length > 1 ? blobs : undefined,
-      dicomUrls: hasNew ? undefined : existing?.dicomUrls,
-      dicomBlobs: hasNew ? undefined : existing?.dicomBlobs,
-      posterUrl: hasNew ? undefined : existing?.posterUrl,
-      posterBlob: hasNew ? undefined : existing?.posterBlob,
+      imageUrl: replacingExisting ? undefined : existing?.imageUrl,
+      imageUrls: replacingExisting ? undefined : existing?.imageUrls,
+      imageBlob: hasImages && blobs.length === 1 ? blobs[0] : undefined,
+      imageBlobs: hasImages && blobs.length > 1 ? blobs : undefined,
+      dicomUrls: replacingExisting ? undefined : existing?.dicomUrls,
+      dicomBlobs: hasDicom ? dicomBlobs : replacingExisting ? undefined : existing?.dicomBlobs,
+      posterUrl: replacingExisting ? undefined : existing?.posterUrl,
+      posterBlob: hasDicom ? dicomPoster : replacingExisting ? undefined : existing?.posterBlob,
       credit: credit.trim() || undefined,
       seed: existing?.seed,
       createdAt: existing?.createdAt ?? Date.now(),
@@ -353,15 +433,15 @@ export function Editor({
             >
               <UploadSimple size={28} />
               <span className="max-w-xs text-center text-sm">
-                Drop a de-identified image here, or click to browse. Select multiple files for a
-                scrollable CT or MRI stack.
+                Drop de-identified DICOM, PNG, JPG, or WebP files here. Select multiple DICOM
+                files or images for a scrollable CT or MRI stack.
               </span>
             </button>
           )}
           <input
             ref={fileInput}
             type="file"
-            accept="image/png,image/jpeg,image/webp"
+            accept=".dcm,application/dicom,image/png,image/jpeg,image/webp"
             multiple
             className="hidden"
             onChange={(e) => handleFiles(e.target.files)}

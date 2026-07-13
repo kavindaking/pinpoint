@@ -210,7 +210,7 @@ export function Landing({
             Build the case set you wish you had.
           </h2>
           <p className="mt-3 max-w-[46ch] text-sm leading-relaxed text-ink-dim">
-            Drop in any de-identified PNG or JPG and mark the ground truth directly on the image
+            Drop in de-identified DICOM, PNG, JPG, or WebP files and mark the ground truth directly on the image
             with ellipse, box, freehand, or point tools. Tag cases by subspecialty, modality, and
             difficulty, then filter your rounds to what you are revising: MSK before the on-call
             shift, neuro before the exam.

@@ -272,7 +272,7 @@ export function Cases({
           <EmptyState
             icon={<FilmStrip size={40} />}
             title="No personal cases yet"
-            body="Upload your own de-identified images to build a personalised study set. Single images, or several files for a scrollable CT/MRI stack."
+            body="Upload de-identified DICOM, PNG, JPG, or WebP files to build a personalised study set. Select several files for a scrollable CT/MRI stack."
             action={
               <Button variant="primary" onClick={onNew}>
                 <FilePlus size={15} />
