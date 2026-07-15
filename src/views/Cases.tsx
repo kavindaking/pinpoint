@@ -14,12 +14,17 @@ import {
 import type { CaseSource, RadCase, Subspecialty } from "../types";
 import { DIFFICULTIES, MODALITIES, SUBSPECIALTIES, frameCount, isStack } from "../types";
 import { exportCases, importCases, restoreSeeds } from "../lib/storage";
+import { withImageRetry } from "../lib/image";
 import { Button, Chip, EmptyState, Panel, Select, inputClass } from "../components/ui";
 import { CloudPanel } from "../components/CloudPanel";
 
 function CaseThumb({ radCase }: { radCase: RadCase }) {
   const [src, setSrc] = useState<string | null>(null);
+  const [retryToken, setRetryToken] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
+    setRetryToken(null);
+    setFailed(false);
     // A poster (or the first frame) stands in for the whole case; DICOM
     // series can't be shown as an <img>, so they carry a rendered poster.
     if (radCase.posterUrl) {
@@ -46,7 +51,30 @@ function CaseThumb({ radCase }: { radCase: RadCase }) {
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-t-(--radius-panel) bg-black">
       {src && (
-        <img src={src} alt="" loading="lazy" className="h-full w-full object-cover opacity-90" />
+        <img
+          src={withImageRetry(src, retryToken)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setFailed(false)}
+          onError={() => {
+            if (!retryToken) setRetryToken(`${Date.now()}`);
+            else setFailed(true);
+          }}
+          className="h-full w-full object-cover opacity-90"
+        />
+      )}
+      {failed && (
+        <button
+          type="button"
+          onClick={() => {
+            setFailed(false);
+            setRetryToken(`${Date.now()}`);
+          }}
+          className="absolute inset-0 cursor-pointer text-xs text-white/60"
+        >
+          Retry image
+        </button>
       )}
       {isStack(radCase) && (
         <span className="absolute right-2 top-2 flex items-center gap-1 rounded-(--radius-ctl) bg-black/60 px-1.5 py-0.5 font-mono text-[11px] text-white/90">

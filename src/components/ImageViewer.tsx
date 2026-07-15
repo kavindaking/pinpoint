@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { frameCount, type RadCase } from "../types";
 import { CompressedDicomError, parseDicomFrames, renderToImageData, type DicomImage } from "../lib/dicom";
+import { withImageRetry } from "../lib/image";
 import { ArrowsIn, CircleHalf, MagnifyingGlassMinus, MagnifyingGlassPlus } from "./icons";
 
 export interface ViewerPoint {
@@ -68,6 +69,8 @@ export function ImageViewer({
   const dicomMode = !!(dicomUrls?.length || dicomBlobs?.length);
 
   const [srcs, setSrcs] = useState<string[]>([]);
+  const [imageRetryTokens, setImageRetryTokens] = useState<Record<string, string>>({});
+  const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
   const [dicom, setDicom] = useState<DicomImage[] | null>(null);
   const [dicomError, setDicomError] = useState<string | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -115,6 +118,8 @@ export function ImageViewer({
     setHu(null);
     setDicom(null);
     setDicomError(null);
+    setImageRetryTokens({});
+    setFailedImages(new Set());
     idRef.current = null;
 
     if (dicomUrls?.length || dicomBlobs?.length) {
@@ -377,6 +382,23 @@ export function ImageViewer({
     return set;
   }, [slice, srcs.length]);
 
+  const retryImage = useCallback((src: string) => {
+    setFailedImages((current) => {
+      const next = new Set(current);
+      next.delete(src);
+      return next;
+    });
+    setImageRetryTokens((current) => ({ ...current, [src]: `${Date.now()}` }));
+  }, []);
+
+  const handleImageError = useCallback((src: string) => {
+    if (!imageRetryTokens[src]) {
+      setImageRetryTokens((current) => ({ ...current, [src]: `${Date.now()}` }));
+      return;
+    }
+    setFailedImages((failed) => new Set(failed).add(src));
+  }, [imageRetryTokens]);
+
   const pacsButton =
     "pointer-events-auto flex size-7 cursor-pointer items-center justify-center rounded-[6px] bg-black/55 text-white/85 transition-colors hover:bg-black/75 hover:text-white";
 
@@ -410,11 +432,17 @@ export function ImageViewer({
               {srcs.map((s, i) => (
                 <img
                   key={s}
-                  src={preload.has(i) || i === slice ? s : undefined}
+                  src={preload.has(i) || i === slice ? withImageRetry(s, imageRetryTokens[s]) : undefined}
                   data-src={s}
                   alt={i === slice ? `${radCase.modality}, slice ${i + 1} of ${frames}` : ""}
                   draggable={false}
                   onLoad={(e) => {
+                    setFailedImages((current) => {
+                      if (!current.has(s)) return current;
+                      const next = new Set(current);
+                      next.delete(s);
+                      return next;
+                    });
                     if (size) return;
                     const img = e.currentTarget;
                     if (img.naturalWidth) {
@@ -422,6 +450,7 @@ export function ImageViewer({
                       onImageSize?.(img.naturalWidth, img.naturalHeight);
                     }
                   }}
+                  onError={() => handleImageError(s)}
                   className="absolute inset-0 block h-full w-full select-none"
                   style={{ opacity: i === slice ? 1 : 0 }}
                 />
@@ -454,6 +483,18 @@ export function ImageViewer({
         {dicomMode && !dicom && !dicomError && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-white/60">
             Loading series…
+          </div>
+        )}
+        {!dicomMode && srcs[slice] && failedImages.has(srcs[slice]) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-white/70">
+            <span>This image could not be loaded.</span>
+            <button
+              type="button"
+              onClick={() => retryImage(srcs[slice])}
+              className="cursor-pointer rounded-(--radius-ctl) border border-white/20 bg-white/10 px-3 py-1.5 text-white hover:bg-white/15"
+            >
+              Try again
+            </button>
           </div>
         )}
         {isStackView && (
