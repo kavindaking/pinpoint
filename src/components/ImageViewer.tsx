@@ -13,6 +13,17 @@ const ZOOM_MIN = 1;
 const ZOOM_MAX = 8;
 
 /**
+ * CSS typed arithmetic (`calc(72vh * 1.2)`) is not supported consistently by
+ * Safari. Scale the simple length in JavaScript so the browser receives an
+ * ordinary value such as `86.4vh`.
+ */
+function scaleCssLength(length: string, factor: number): string {
+  const match = length.trim().match(/^([0-9]*\.?[0-9]+)([a-z%]+)$/i);
+  if (!match) return length;
+  return `${Number(match[1]) * factor}${match[2]}`;
+}
+
+/**
  * The central film viewer. The container is sized to the image's exact
  * aspect ratio (capped by width and viewport height), the current slice
  * fills it, and an SVG overlay shares the same box with a natural-pixel
@@ -372,6 +383,12 @@ export function ImageViewer({
   const toneAdjusted = dicomMode
     ? dicom != null && (Math.round(center) !== Math.round(dicom[0].windowCenter) || Math.round(width) !== Math.round(dicom[0].windowWidth) || invert !== dicom[0].invert)
     : bright !== 100 || contrast !== 100 || invert;
+  const imageMaxWidth = size ? scaleCssLength(maxHeight, size.w / size.h) : null;
+  const viewerMaxWidth = imageMaxWidth
+    ? isStackView
+      ? `calc(${imageMaxWidth} + 2.25rem)`
+      : imageMaxWidth
+    : undefined;
   // Preload neighbours so scrubbing images does not flash.
   const preload = useMemo(() => {
     const set = new Set<number>();
@@ -403,7 +420,10 @@ export function ImageViewer({
     "pointer-events-auto flex size-7 cursor-pointer items-center justify-center rounded-[6px] bg-black/55 text-white/85 transition-colors hover:bg-black/75 hover:text-white";
 
   return (
-    <div className="mx-auto flex items-stretch gap-2" style={{ width: size ? `min(100%, calc(${maxHeight} * ${size.w / size.h} + ${isStackView ? 2.25 : 0}rem))` : "100%" }}>
+    <div
+      className="mx-auto flex w-full items-stretch gap-2"
+      style={{ maxWidth: viewerMaxWidth }}
+    >
       <div
         ref={containerRef}
         className="relative min-w-0 flex-1 overflow-hidden rounded-(--radius-panel) border border-line bg-black"
@@ -413,10 +433,14 @@ export function ImageViewer({
         {/* Image/canvas and overlay share one transform so clicks stay calibrated. */}
         <div
           className="absolute inset-0"
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: "center",
-          }}
+          style={
+            zoom !== 1 || pan.x !== 0 || pan.y !== 0
+              ? {
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transformOrigin: "center",
+                }
+              : undefined
+          }
         >
           {dicomMode ? (
             <canvas
@@ -427,7 +451,11 @@ export function ImageViewer({
           ) : (
             <div
               className="absolute inset-0"
-              style={{ filter: `brightness(${bright / 100}) contrast(${contrast / 100}) invert(${invert ? 1 : 0})` }}
+              style={
+                toneAdjusted
+                  ? { filter: `brightness(${bright / 100}) contrast(${contrast / 100}) invert(${invert ? 1 : 0})` }
+                  : undefined
+              }
             >
               {srcs.map((s, i) => (
                 <img
