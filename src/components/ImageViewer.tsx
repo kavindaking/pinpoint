@@ -82,6 +82,7 @@ export function ImageViewer({
   const [srcs, setSrcs] = useState<string[]>([]);
   const [imageRetryTokens, setImageRetryTokens] = useState<Record<string, string>>({});
   const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
+  const [flatRevision, setFlatRevision] = useState(0);
   const [dicom, setDicom] = useState<DicomImage[] | null>(null);
   const [dicomError, setDicomError] = useState<string | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -99,6 +100,7 @@ export function ImageViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const flatFramesRef = useRef<Map<number, { image: HTMLImageElement; src: string }>>(new Map());
   const idRef = useRef<ImageData | null>(null);
   const downAt = useRef<{ x: number; y: number } | null>(null);
   const downClient = useRef<{ x: number; y: number } | null>(null);
@@ -131,6 +133,8 @@ export function ImageViewer({
     setDicomError(null);
     setImageRetryTokens({});
     setFailedImages(new Set());
+    flatFramesRef.current.clear();
+    setFlatRevision((revision) => revision + 1);
     idRef.current = null;
 
     if (dicomUrls?.length || dicomBlobs?.length) {
@@ -416,6 +420,68 @@ export function ImageViewer({
     setFailedImages((failed) => new Set(failed).add(src));
   }, [imageRetryTokens]);
 
+  // WebKit can drop an absolutely positioned <img> after its surrounding
+  // aspect-ratio/filter layers update. Decode flat frames off-DOM and paint
+  // them into the same stable canvas used by the DICOM viewer instead.
+  useEffect(() => {
+    if (dicomMode) return;
+    let cancelled = false;
+
+    for (const i of preload) {
+      const source = srcs[i];
+      if (!source) continue;
+      const resolved = withImageRetry(source, imageRetryTokens[source]);
+      if (flatFramesRef.current.get(i)?.src === resolved) continue;
+
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => {
+        if (cancelled) return;
+        flatFramesRef.current.set(i, { image, src: resolved });
+        setFailedImages((current) => {
+          if (!current.has(source)) return current;
+          const next = new Set(current);
+          next.delete(source);
+          return next;
+        });
+        setFlatRevision((revision) => revision + 1);
+      };
+      image.onerror = () => {
+        if (!cancelled) handleImageError(source);
+      };
+      image.src = resolved;
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dicomMode, handleImageError, imageRetryTokens, preload, srcs]);
+
+  useEffect(() => {
+    if (dicomMode) return;
+    const frame = flatFramesRef.current.get(slice)?.image;
+    const canvas = canvasRef.current;
+    if (!frame || !canvas) return;
+
+    if (canvas.width !== frame.naturalWidth || canvas.height !== frame.naturalHeight) {
+      canvas.width = frame.naturalWidth;
+      canvas.height = frame.naturalHeight;
+    }
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingEnabled = zoom <= 2;
+    context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+
+    if (!size || size.w !== frame.naturalWidth || size.h !== frame.naturalHeight) {
+      setSize({ w: frame.naturalWidth, h: frame.naturalHeight });
+      onImageSize?.(frame.naturalWidth, frame.naturalHeight);
+    }
+    // Callback identities are intentionally excluded: painting only depends
+    // on the decoded frame, active slice and canvas-affecting zoom state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dicomMode, flatRevision, slice, zoom]);
+
   const pacsButton =
     "pointer-events-auto flex size-7 cursor-pointer items-center justify-center rounded-[6px] bg-black/55 text-white/85 transition-colors hover:bg-black/75 hover:text-white";
 
@@ -442,49 +508,19 @@ export function ImageViewer({
               : undefined
           }
         >
-          {dicomMode ? (
-            <canvas
-              ref={canvasRef}
-              className="absolute inset-0 block h-full w-full select-none"
-              style={{ imageRendering: zoom > 2 ? "pixelated" : "auto" }}
-            />
-          ) : (
-            <div
-              className="absolute inset-0"
-              style={
-                toneAdjusted
-                  ? { filter: `brightness(${bright / 100}) contrast(${contrast / 100}) invert(${invert ? 1 : 0})` }
-                  : undefined
-              }
-            >
-              {srcs.map((s, i) => (
-                <img
-                  key={s}
-                  src={preload.has(i) || i === slice ? withImageRetry(s, imageRetryTokens[s]) : undefined}
-                  data-src={s}
-                  alt={i === slice ? `${radCase.modality}, slice ${i + 1} of ${frames}` : ""}
-                  draggable={false}
-                  onLoad={(e) => {
-                    setFailedImages((current) => {
-                      if (!current.has(s)) return current;
-                      const next = new Set(current);
-                      next.delete(s);
-                      return next;
-                    });
-                    if (size) return;
-                    const img = e.currentTarget;
-                    if (img.naturalWidth) {
-                      setSize({ w: img.naturalWidth, h: img.naturalHeight });
-                      onImageSize?.(img.naturalWidth, img.naturalHeight);
-                    }
-                  }}
-                  onError={() => handleImageError(s)}
-                  className="absolute inset-0 block h-full w-full select-none"
-                  style={{ opacity: i === slice ? 1 : 0 }}
-                />
-              ))}
-            </div>
-          )}
+          <canvas
+            ref={canvasRef}
+            role="img"
+            aria-label={`${radCase.modality}, slice ${slice + 1} of ${frames}`}
+            className="absolute inset-0 block h-full w-full select-none"
+            style={{
+              imageRendering: zoom > 2 ? "pixelated" : "auto",
+              filter:
+                !dicomMode && toneAdjusted
+                  ? `brightness(${bright / 100}) contrast(${contrast / 100}) invert(${invert ? 1 : 0})`
+                  : undefined,
+            }}
+          />
           {size && (
             <svg
               ref={svgRef}
