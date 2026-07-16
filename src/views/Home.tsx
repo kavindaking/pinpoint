@@ -121,7 +121,7 @@ export function Home({
               ))}
             </div>
           </div>
-          <div>
+          <div className="lg:min-h-[6.75rem]">
             <p className="mb-2 text-sm text-ink-dim">Subspecialty</p>
             <div className="flex flex-wrap gap-2">
               {subspecialties.map((s) => (
