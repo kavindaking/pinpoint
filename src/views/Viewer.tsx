@@ -129,12 +129,9 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
   const hasImages = images.length > 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="mx-auto w-full max-w-6xl px-4 py-8">
+      <div className="mb-1 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">DICOM viewer</h1>
-        <span className="hidden text-sm text-ink-faint sm:inline">
-          Read .dcm studies like a PACS station
-        </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button onClick={() => fileInput.current?.click()}>
             <FolderOpen size={15} />
@@ -156,6 +153,7 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
           )}
         </div>
       </div>
+      <p className="mb-6 text-sm text-ink-dim">Read .dcm studies like a PACS station.</p>
       <input
         ref={fileInput}
         type="file"
@@ -179,7 +177,7 @@ export function Viewer({ onImportSeries }: { onImportSeries: (draft: RadCase) =>
       />
 
       {error && (
-        <div className="flex items-start gap-2 rounded-(--radius-panel) border border-line bg-surface p-3 text-sm text-ink-dim">
+        <div className="mb-4 flex items-start gap-2 rounded-(--radius-panel) border border-line bg-surface p-3 text-sm text-ink-dim">
           <Warning size={16} className="mt-0.5 shrink-0 text-near" />
           {error}
         </div>
