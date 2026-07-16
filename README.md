@@ -68,7 +68,8 @@ The global admin workflow requires the Vercel serverless functions and Blob stor
 `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, and `BLOB_READ_WRITE_TOKEN` as deployment
 environment variables. `ADMIN_SESSION_SECRET` should be a long random value and neither
 admin credential should be committed to the repository. Admin sessions use a signed,
-HTTP-only, same-site cookie and expire after 12 hours.
+HTTP-only, same-site cookie and expire after 12 hours. The admin interface is intentionally
+absent from the public navigation and is reached directly at `/admin`.
 
 ## How scoring works
 

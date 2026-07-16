@@ -70,7 +70,11 @@ function pickRound(cases: RadCase[], f: RoundFilters): RadCase[] {
 }
 
 export default function App() {
-  const [route, setRoute] = useState<Route>({ view: "landing" });
+  const [route, setRoute] = useState<Route>(() =>
+    location.pathname.replace(/\/$/, "") === "/admin"
+      ? { view: "admin" }
+      : { view: "landing" },
+  );
   const [cases, setCases] = useState<RadCase[]>([]);
   const [settings, setSettings] = useState<ScoringSettings>(loadSettings);
   const [history, setHistory] = useState<RoundRecord[]>(loadHistory);
@@ -146,7 +150,6 @@ export default function App() {
         ["personal", "My cases"],
         ["viewer", "Viewer"],
         ["stats", "Stats"],
-        ["admin", "Admin"],
       ] as const,
     [],
   );
@@ -165,7 +168,10 @@ export default function App() {
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-6 px-4">
           <button
             type="button"
-            onClick={() => setRoute({ view: "landing" })}
+            onClick={() => {
+              window.history.replaceState(null, "", "/");
+              setRoute({ view: "landing" });
+            }}
             className="flex cursor-pointer items-center gap-2"
             aria-label="Pinpoint home"
           >
@@ -180,7 +186,12 @@ export default function App() {
               <button
                 key={id}
                 type="button"
-                onClick={() => setRoute({ view: id })}
+                onClick={() => {
+                  if (location.pathname !== "/") {
+                    window.history.replaceState(null, "", "/");
+                  }
+                  setRoute({ view: id });
+                }}
                 className={`cursor-pointer rounded-(--radius-ctl) px-3 py-1.5 text-sm transition-colors ${
                   activeNav === id ? "bg-surface-2 text-ink" : "text-ink-dim hover:text-ink"
                 }`}
