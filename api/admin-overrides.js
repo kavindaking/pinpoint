@@ -1,7 +1,9 @@
-import { get, put } from "@vercel/blob";
+import { randomUUID } from "node:crypto";
+import { get, list, put } from "@vercel/blob";
 import { hasSameOrigin, isAdminRequest } from "../server/admin-auth.js";
 
 const PATHNAME = "admin/case-overrides.json";
+const VERSION_PREFIX = "admin/case-overrides/";
 const MODALITIES = new Set(["X-ray", "CT", "MRI", "Ultrasound"]);
 const BODY_REGIONS = new Set(["Chest", "Abdomen", "Head", "Spine", "Upper limb", "Lower limb", "Pelvis"]);
 const SUBSPECIALTIES = new Set(["Chest", "MSK", "Neuro", "Abdominal", "Cardiac", "Head & Neck", "Pediatric", "Breast"]);
@@ -74,68 +76,73 @@ function sanitizeCase(value) {
   };
 }
 
-async function readStore() {
+async function readJsonBlob(urlOrPathname) {
+  const result = await get(urlOrPathname, { access: "public", useCache: false });
+  if (!result || result.statusCode !== 200) return null;
+  return new Response(result.stream).json();
+}
+
+async function readLegacyStore() {
   const result = await get(PATHNAME, { access: "public", useCache: false });
-  if (!result || result.statusCode !== 200) return { cases: {}, etag: undefined };
+  if (!result || result.statusCode !== 200) return {};
   try {
     const parsed = await new Response(result.stream).json();
-    return {
-      cases: parsed && typeof parsed.cases === "object" ? parsed.cases : {},
-      etag: result.blob.etag,
-    };
+    return parsed && typeof parsed.cases === "object" ? parsed.cases : {};
   } catch {
-    return { cases: {}, etag: result.blob.etag };
+    return {};
   }
 }
 
-function isPreconditionFailure(error) {
-  return (
-    error?.name === "BlobPreconditionFailedError" ||
-    String(error?.message ?? error).toLowerCase().includes("precondition failed")
+async function readVersionedOverrides() {
+  const latestByCase = new Map();
+  let cursor;
+  do {
+    const page = await list({ prefix: VERSION_PREFIX, limit: 1000, cursor });
+    for (const blob of page.blobs) {
+      const relative = blob.pathname.slice(VERSION_PREFIX.length);
+      const caseId = relative.split("/")[0];
+      if (!/^seed-[a-z0-9-]+$/i.test(caseId)) continue;
+      const previous = latestByCase.get(caseId);
+      if (!previous || blob.uploadedAt > previous.uploadedAt) {
+        latestByCase.set(caseId, blob);
+      }
+    }
+    cursor = page.hasMore ? page.cursor : undefined;
+  } while (cursor);
+
+  const cases = {};
+  await Promise.all(
+    [...latestByCase.entries()].map(async ([caseId, blob]) => {
+      try {
+        const parsed = await readJsonBlob(blob.url);
+        const override = parsed?.override ?? parsed;
+        if (override?.id === caseId) cases[caseId] = override;
+      } catch {
+        // A damaged historical version should not make the whole library fail.
+      }
+    }),
   );
+  return cases;
 }
 
-async function writeStore(cases, updatedAt, etag) {
-  return put(PATHNAME, JSON.stringify({ version: 1, updatedAt, cases }), {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    cacheControlMaxAge: 60,
-    contentType: "application/json",
-    ...(etag ? { ifMatch: etag } : {}),
-  });
+async function readStore() {
+  const [legacy, versioned] = await Promise.all([readLegacyStore(), readVersionedOverrides()]);
+  return { ...legacy, ...versioned };
 }
 
 async function saveOverride(override) {
-  // Normally this succeeds on the first conditional write. A fresh origin
-  // read and retry protects simultaneous admin saves without losing either
-  // case update.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const current = await readStore();
-    const cases = { ...current.cases, [override.id]: override };
-    try {
-      await writeStore(cases, override.updatedAt, current.etag);
-    } catch (error) {
-      if (!isPreconditionFailure(error)) throw error;
-      continue;
-    }
-    const confirmed = await readStore();
-    if (confirmed.cases[override.id]?.updatedAt === override.updatedAt) return;
+  const pathname = `${VERSION_PREFIX}${override.id}/${Date.now()}-${randomUUID()}.json`;
+  const saved = await put(pathname, JSON.stringify({ version: 2, override }), {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: false,
+    cacheControlMaxAge: 60,
+    contentType: "application/json",
+  });
+  const confirmed = await readJsonBlob(saved.url);
+  if ((confirmed?.override ?? confirmed)?.updatedAt !== override.updatedAt) {
+    throw new Error("The case save could not be confirmed. Please publish it again.");
   }
-
-  // Some Blob stores can repeatedly return an ETag that their conditional
-  // write endpoint rejects. The origin read above is uncached, so merge once
-  // more and use the store's normal overwrite path instead of blocking the
-  // admin indefinitely.
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const latest = await readStore();
-    await writeStore({ ...latest.cases, [override.id]: override }, override.updatedAt);
-    await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
-    const confirmed = await readStore();
-    if (confirmed.cases[override.id]?.updatedAt === override.updatedAt) return;
-  }
-
-  throw new Error("The case save could not be confirmed. Please publish it again.");
 }
 
 export default async function handler(req, res) {
@@ -143,8 +150,7 @@ export default async function handler(req, res) {
 
   if (req.method === "GET") {
     try {
-      const store = await readStore();
-      res.status(200).json({ overrides: store.cases });
+      res.status(200).json({ overrides: await readStore() });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -167,7 +173,6 @@ export default async function handler(req, res) {
     await saveOverride(override);
     res.status(200).json({ saved: true, override });
   } catch (error) {
-    const status = isPreconditionFailure(error) ? 409 : 400;
-    res.status(status).json({ error: error instanceof Error ? error.message : String(error) });
+    res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
   }
 }
