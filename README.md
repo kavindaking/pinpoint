@@ -37,6 +37,9 @@ Dark-first UI designed for reading-room conditions, with a light theme toggle.
   stem, teaching point, image credit.
 - **Case library filters**: filter each pool by subspecialty, modality, and difficulty, or
   search by finding name.
+- **Global admin corrections**: password-protected admins can edit bundled case metadata
+  and ground-truth markings. Corrections are stored centrally and overlaid for every user
+  without replacing or duplicating the original medical images.
 - **DICOM viewer**: a PACS-style tab that reads uncompressed `.dcm` studies. Scroll the
   stack, window/level by dragging (with a live HU readout), apply presets (brain, lung,
   bone, abdomen, soft tissue), zoom, pan, and invert. Any loaded series can be imported as
@@ -60,6 +63,12 @@ npm run build      # type-check + production build to dist/
 ```
 
 The build is static files only; host `dist/` anywhere (GitHub Pages, Netlify, etc.).
+
+The global admin workflow requires the Vercel serverless functions and Blob store. Configure
+`ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, and `BLOB_READ_WRITE_TOKEN` as deployment
+environment variables. `ADMIN_SESSION_SECRET` should be a long random value and neither
+admin credential should be committed to the repository. Admin sessions use a signed,
+HTTP-only, same-site cookie and expire after 12 hours.
 
 ## How scoring works
 
@@ -90,12 +99,14 @@ Only upload images that are de-identified and that you have the right to use.
 - **Stack**: React 19, Vite, Tailwind CSS v4 (CSS-variable design tokens, dark/light),
   Phosphor icons, self-hosted Geist / Geist Mono. No router, no state library: a small
   discriminated-union route state in `App.tsx` is enough for four screens.
-- **Persistence** is intentionally client-side so the app deploys as static files: cases
+- **Persistence** keeps personal cases client-side: cases
   live in IndexedDB (uploaded images as Blobs), settings and history in localStorage.
   Bundled seed cases are copied into IndexedDB on first run; deleting one leaves a
   tombstone so it stays deleted, and "Restore bundled" brings them back. If multi-user
-  shared uploads are ever needed, that is a backend + database project; the storage module
-  (`src/lib/storage.ts`) is the single seam to swap.
+  shared uploads are ever needed, that remains a larger backend + database project. Admin
+  corrections to bundled metadata and normalized marking geometry are the exception: they
+  are written to a versioned JSON document in Vercel Blob and merged over each client's
+  local seed cases at load time.
 - **Hit testing** (`src/lib/geometry.ts`) computes point-to-shape distance for ellipse,
   rect, polygon, and point ground truths in natural-pixel space, then normalizes by the
   image diagonal so scoring is aspect- and resolution-independent.

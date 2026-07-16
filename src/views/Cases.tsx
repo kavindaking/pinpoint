@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowCounterClockwise,
   CloudArrowUp,
@@ -100,6 +100,10 @@ export function Cases({
   onDelete,
   onStudy,
   onChanged,
+  canEditLibrary = false,
+  heading,
+  description,
+  headerActions,
 }: {
   scope: Extract<CaseSource, "library" | "personal">;
   cases: RadCase[];
@@ -108,6 +112,10 @@ export function Cases({
   onDelete: (c: RadCase) => void;
   onStudy: (c: RadCase) => void;
   onChanged: () => void;
+  canEditLibrary?: boolean;
+  heading?: string;
+  description?: string;
+  headerActions?: ReactNode;
 }) {
   const isLibrary = scope === "library";
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -170,13 +178,14 @@ export function Cases({
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
       <div className="mb-1 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">
-          {isLibrary ? "Case library" : "My cases"}
+          {heading ?? (isLibrary ? "Case library" : "My cases")}
         </h1>
         <span className="font-mono text-sm text-ink-faint">
           {filtersActive ? `${visible.length} of ${scoped.length}` : scoped.length}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {notice && <span className="mr-2 text-sm text-ink-dim">{notice}</span>}
+          {headerActions}
           {!isLibrary && (
             <Button onClick={() => importInput.current?.click()}>
               <UploadSimple size={15} />
@@ -196,7 +205,7 @@ export function Cases({
             <DownloadSimple size={15} />
             Export
           </Button>
-          {isLibrary ? (
+          {isLibrary && !canEditLibrary ? (
             <Button
               onClick={async () => {
                 await restoreSeeds();
@@ -207,18 +216,18 @@ export function Cases({
               <ArrowCounterClockwise size={15} />
               Restore bundled
             </Button>
-          ) : (
+          ) : !isLibrary ? (
             <Button variant="primary" onClick={onNew}>
               <FilePlus size={15} />
               New case
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
       <p className="mb-6 text-sm text-ink-dim">
-        {isLibrary
+        {description ?? (isLibrary
           ? "Curated, openly licensed teaching cases. Play or study them; they stay put."
-          : "Your own uploads for personalised study, stored only in this browser."}
+          : "Your own uploads for personalised study, stored only in this browser.")}
       </p>
       <input
         ref={importInput}
@@ -383,7 +392,7 @@ export function Cases({
                   <Button className="!px-2.5 !py-1 !text-xs" onClick={() => onStudy(c)}>
                     Study
                   </Button>
-                  {!isLibrary && (
+                  {(!isLibrary || canEditLibrary) && (
                     <Button className="!px-2.5 !py-1 !text-xs" onClick={() => onEdit(c)}>
                       <PencilSimple size={13} />
                       Edit

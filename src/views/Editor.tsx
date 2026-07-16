@@ -66,10 +66,12 @@ export function Editor({
   existing,
   onSave,
   onCancel,
+  adminMode = false,
 }: {
   existing: RadCase | null;
-  onSave: (c: RadCase) => void;
+  onSave: (c: RadCase) => void | Promise<void>;
   onCancel: () => void;
+  adminMode?: boolean;
 }) {
   const [title, setTitle] = useState(existing?.title ?? "");
   const [stem, setStem] = useState(existing?.stem ?? "");
@@ -97,6 +99,7 @@ export function Editor({
   const [jump, setJump] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importNotice, setImportNotice] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const dragAnchor = useRef<ViewerPoint | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const directoryInput = useRef<HTMLInputElement>(null);
@@ -285,7 +288,7 @@ export function Editor({
     setSlice(0);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!previewCase) return setError("Upload an image first.");
     if (!title.trim()) return setError("Give the case a finding or diagnosis name.");
     if (regions.length === 0) return setError("Mark at least one abnormality region on the image.");
@@ -293,33 +296,40 @@ export function Editor({
     const hasImages = blobs.length > 0;
     const hasDicom = dicomBlobs.length > 0;
     const replacingExisting = hasImages || hasDicom;
-    onSave({
-      id: existing?.id ?? `case-${Date.now()}`,
-      title: title.trim(),
-      stem: stem.trim() || undefined,
-      explanation: explanation.trim(),
-      modality,
-      bodyRegion,
-      subspecialty,
-      difficulty,
-      regions,
-      imageUrl: replacingExisting ? undefined : existing?.imageUrl,
-      imageUrls: replacingExisting ? undefined : existing?.imageUrls,
-      imageBlob: hasImages && blobs.length === 1 ? blobs[0] : undefined,
-      imageBlobs: hasImages && blobs.length > 1 ? blobs : undefined,
-      dicomUrls: replacingExisting ? undefined : existing?.dicomUrls,
-      dicomBlobs: hasDicom ? dicomBlobs : replacingExisting ? undefined : existing?.dicomBlobs,
-      dicomFrameCount: hasDicom
-        ? dicomFrameCount
-        : replacingExisting
-          ? undefined
-          : existing?.dicomFrameCount,
-      posterUrl: replacingExisting ? undefined : existing?.posterUrl,
-      posterBlob: hasDicom ? dicomPoster : replacingExisting ? undefined : existing?.posterBlob,
-      credit: credit.trim() || undefined,
-      seed: existing?.seed,
-      createdAt: existing?.createdAt ?? Date.now(),
-    });
+    setSaving(true);
+    try {
+      await onSave({
+        id: existing?.id ?? `case-${Date.now()}`,
+        title: title.trim(),
+        stem: stem.trim() || undefined,
+        explanation: explanation.trim(),
+        modality,
+        bodyRegion,
+        subspecialty,
+        difficulty,
+        regions,
+        imageUrl: replacingExisting ? undefined : existing?.imageUrl,
+        imageUrls: replacingExisting ? undefined : existing?.imageUrls,
+        imageBlob: hasImages && blobs.length === 1 ? blobs[0] : undefined,
+        imageBlobs: hasImages && blobs.length > 1 ? blobs : undefined,
+        dicomUrls: replacingExisting ? undefined : existing?.dicomUrls,
+        dicomBlobs: hasDicom ? dicomBlobs : replacingExisting ? undefined : existing?.dicomBlobs,
+        dicomFrameCount: hasDicom
+          ? dicomFrameCount
+          : replacingExisting
+            ? undefined
+            : existing?.dicomFrameCount,
+        posterUrl: replacingExisting ? undefined : existing?.posterUrl,
+        posterBlob: hasDicom ? dicomPoster : replacingExisting ? undefined : existing?.posterBlob,
+        credit: credit.trim() || undefined,
+        seed: existing?.seed,
+        createdAt: existing?.createdAt ?? Date.now(),
+      });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save this case.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -329,16 +339,16 @@ export function Editor({
           <ArrowLeft size={16} weight="bold" />
         </Button>
         <h1 className="text-xl font-semibold tracking-tight">
-          {existing ? "Edit case" : "New case"}
+          {adminMode ? "Adjust library case" : existing ? "Edit case" : "New case"}
         </h1>
         <div className="ml-auto flex items-center gap-3">
           <div className="text-right text-sm">
             {error && <p className="text-miss">{error}</p>}
             {importNotice && <p className="text-ink-dim">{importNotice}</p>}
           </div>
-          <Button variant="primary" onClick={save}>
+          <Button variant="primary" onClick={() => void save()} disabled={saving}>
             <FloppyDisk size={16} />
-            Save case
+            {saving ? "Saving…" : adminMode ? "Publish changes" : "Save case"}
           </Button>
         </div>
       </div>
@@ -367,22 +377,26 @@ export function Editor({
                     {label}
                   </button>
                 ))}
-                <Button
-                  variant="ghost"
-                  className="!px-3 !py-1.5 ml-auto"
-                  onClick={() => fileInput.current?.click()}
-                >
-                  <UploadSimple size={15} />
-                  {isStack ? "Replace stack" : "Replace image"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="!px-3 !py-1.5"
-                  onClick={() => directoryInput.current?.click()}
-                >
-                  <UploadSimple size={15} />
-                  DICOM folder
-                </Button>
+                {!adminMode && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      className="ml-auto !px-3 !py-1.5"
+                      onClick={() => fileInput.current?.click()}
+                    >
+                      <UploadSimple size={15} />
+                      {isStack ? "Replace stack" : "Replace image"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="!px-3 !py-1.5"
+                      onClick={() => directoryInput.current?.click()}
+                    >
+                      <UploadSimple size={15} />
+                      DICOM folder
+                    </Button>
+                  </>
+                )}
               </div>
 
               <ImageViewer

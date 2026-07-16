@@ -19,6 +19,8 @@ import { Editor } from "./views/Editor";
 import { Study } from "./views/Study";
 import { Stats } from "./views/Stats";
 import { Viewer } from "./views/Viewer";
+import { Admin } from "./views/Admin";
+import { mergeGlobalCaseOverrides, saveGlobalCaseOverride } from "./lib/admin";
 
 type Route =
   | { view: "landing" }
@@ -27,8 +29,9 @@ type Route =
   | { view: "summary"; outcomes: CaseOutcome[]; filters: RoundFilters }
   | { view: "library" }
   | { view: "personal" }
-  | { view: "editor"; existing: RadCase | null }
-  | { view: "study"; startAt: number; back: "library" | "personal" }
+  | { view: "admin" }
+  | { view: "editor"; existing: RadCase | null; back: "personal" | "admin" }
+  | { view: "study"; startAt: number; back: "library" | "personal" | "admin" }
   | { view: "viewer" }
   | { view: "stats" };
 
@@ -73,11 +76,14 @@ export default function App() {
   const [history, setHistory] = useState<RoundRecord[]>(loadHistory);
   const [theme, toggleTheme] = useTheme();
 
-  const refreshCases = useCallback(() => {
-    getAllCases().then(setCases);
+  const refreshCases = useCallback(async () => {
+    const localCases = await getAllCases();
+    setCases(await mergeGlobalCaseOverrides(localCases));
   }, []);
 
-  useEffect(refreshCases, [refreshCases]);
+  useEffect(() => {
+    void refreshCases();
+  }, [refreshCases]);
 
   // A shared-set deep link (?share=CODE) imports on load, then lands the user
   // in My cases so they can see what arrived.
@@ -140,12 +146,13 @@ export default function App() {
         ["personal", "My cases"],
         ["viewer", "Viewer"],
         ["stats", "Stats"],
+        ["admin", "Admin"],
       ] as const,
     [],
   );
   const activeNav =
     route.view === "editor"
-      ? "personal"
+      ? route.back
       : route.view === "study"
         ? route.back
         : route.view === "play" || route.view === "summary"
@@ -235,8 +242,10 @@ export default function App() {
           <Cases
             scope={route.view}
             cases={cases}
-            onNew={() => setRoute({ view: "editor", existing: null })}
-            onEdit={(c) => setRoute({ view: "editor", existing: c })}
+            onNew={() => setRoute({ view: "editor", existing: null, back: "personal" })}
+            onEdit={(c) =>
+              setRoute({ view: "editor", existing: c, back: "personal" })
+            }
             onDelete={async (c) => {
               await deleteCase(c);
               refreshCases();
@@ -249,26 +258,54 @@ export default function App() {
             onChanged={refreshCases}
           />
         )}
+        {route.view === "admin" && (
+          <Admin
+            cases={cases}
+            onEdit={(c) => setRoute({ view: "editor", existing: c, back: "admin" })}
+            onStudy={(c) => {
+              const list = cases.filter((candidate) => candidate.seed);
+              setRoute({
+                view: "study",
+                startAt: Math.max(0, list.indexOf(c)),
+                back: "admin",
+              });
+            }}
+            onChanged={() => void refreshCases()}
+          />
+        )}
         {route.view === "editor" && (
           <Editor
             existing={route.existing}
             onSave={async (c) => {
-              await saveCase(c);
-              refreshCases();
-              setRoute({ view: "personal" });
+              if (route.back === "admin") {
+                await saveGlobalCaseOverride(c);
+                await refreshCases();
+                setRoute({ view: "admin" });
+              } else {
+                await saveCase(c);
+                await refreshCases();
+                setRoute({ view: "personal" });
+              }
             }}
-            onCancel={() => setRoute({ view: "personal" })}
+            onCancel={() => setRoute({ view: route.back })}
+            adminMode={route.back === "admin"}
           />
         )}
         {route.view === "study" && (
           <Study
-            cases={cases.filter((x) => (route.back === "library" ? x.seed : !x.seed))}
+            cases={cases.filter((x) =>
+              route.back === "library" || route.back === "admin" ? x.seed : !x.seed,
+            )}
             startAt={route.startAt}
             onExit={() => setRoute({ view: route.back })}
           />
         )}
         {route.view === "viewer" && (
-          <Viewer onImportSeries={(draft) => setRoute({ view: "editor", existing: draft })} />
+          <Viewer
+            onImportSeries={(draft) =>
+              setRoute({ view: "editor", existing: draft, back: "personal" })
+            }
+          />
         )}
         {route.view === "stats" && (
           <Stats history={history} onChanged={() => setHistory(loadHistory())} />
