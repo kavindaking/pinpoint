@@ -307,7 +307,7 @@ export function Play({
                   {displayCase.explanation}
                 </p>
               </div>
-              <div className="text-right">
+              <div className="flex items-baseline justify-end gap-2 whitespace-nowrap text-right">
                 <p className="font-mono text-2xl tabular-nums">
                   +{displayResult.baseScore + displayResult.timeBonus}
                 </p>
