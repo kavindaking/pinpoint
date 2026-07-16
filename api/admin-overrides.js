@@ -88,6 +88,47 @@ async function readStore() {
   }
 }
 
+function isPreconditionFailure(error) {
+  return (
+    error?.name === "BlobPreconditionFailedError" ||
+    String(error?.message ?? error).toLowerCase().includes("precondition failed")
+  );
+}
+
+async function writeStore(cases, updatedAt, etag) {
+  return put(PATHNAME, JSON.stringify({ version: 1, updatedAt, cases }), {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    cacheControlMaxAge: 60,
+    contentType: "application/json",
+    ...(etag ? { ifMatch: etag } : {}),
+  });
+}
+
+async function saveOverride(override) {
+  // Normally this succeeds on the first conditional write. A fresh origin
+  // read and retry protects simultaneous admin saves without losing either
+  // case update.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await readStore();
+    const cases = { ...current.cases, [override.id]: override };
+    try {
+      await writeStore(cases, override.updatedAt, current.etag);
+      return;
+    } catch (error) {
+      if (!isPreconditionFailure(error)) throw error;
+    }
+  }
+
+  // Some Blob stores can repeatedly return an ETag that their conditional
+  // write endpoint rejects. The origin read above is uncached, so merge once
+  // more and use the store's normal overwrite path instead of blocking the
+  // admin indefinitely.
+  const latest = await readStore();
+  await writeStore({ ...latest.cases, [override.id]: override }, override.updatedAt);
+}
+
 export default async function handler(req, res) {
   res.setHeader("cache-control", "no-store");
 
@@ -114,19 +155,10 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     const override = sanitizeCase(body?.case);
-    const current = await readStore();
-    const cases = { ...current.cases, [override.id]: override };
-    await put(PATHNAME, JSON.stringify({ version: 1, updatedAt: override.updatedAt, cases }), {
-      access: "public",
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      cacheControlMaxAge: 60,
-      contentType: "application/json",
-      ...(current.etag ? { ifMatch: current.etag } : {}),
-    });
+    await saveOverride(override);
     res.status(200).json({ saved: true, override });
   } catch (error) {
-    const status = error?.name === "BlobPreconditionFailedError" ? 409 : 400;
+    const status = isPreconditionFailure(error) ? 409 : 400;
     res.status(status).json({ error: error instanceof Error ? error.message : String(error) });
   }
 }
