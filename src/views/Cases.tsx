@@ -236,21 +236,44 @@ export function Cases({
       )}
 
       {scoped.length > 0 && (
-        <div className="mb-6 flex flex-wrap items-center gap-2 rounded-(--radius-panel) border border-line bg-surface p-3">
-          {subspecialties.map((s) => (
-            <Chip
-              key={s}
-              active={pickedSubs.includes(s)}
-              onClick={() =>
-                setPickedSubs((cur) =>
-                  cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s],
-                )
-              }
-            >
-              {s}
-            </Chip>
-          ))}
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="mb-6 rounded-(--radius-panel) border border-line bg-surface p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-ink-faint">
+              Subspecialty
+            </p>
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPickedSubs([]);
+                  setModality("all");
+                  setDifficulty("all");
+                  setQuery("");
+                }}
+                className="cursor-pointer text-xs text-ink-faint transition-colors hover:text-ink"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {subspecialties.map((s) => (
+              <Chip
+                key={s}
+                active={pickedSubs.includes(s)}
+                onClick={() =>
+                  setPickedSubs((cur) =>
+                    cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s],
+                  )
+                }
+              >
+                {s}
+              </Chip>
+            ))}
+          </div>
+
+          <div className="mt-4 grid gap-2 border-t border-line pt-4 sm:grid-cols-2 xl:grid-cols-[minmax(10rem,0.8fr)_minmax(10rem,0.8fr)_minmax(16rem,1.4fr)]">
             <Select value={modality} onChange={(e) => setModality(e.target.value)} aria-label="Filter by modality">
               <option value="all">All modalities</option>
               {MODALITIES.map((m) => (
@@ -263,14 +286,14 @@ export function Cases({
                 <option key={d}>{d}</option>
               ))}
             </Select>
-            <div className="relative">
+            <div className="relative sm:col-span-2 xl:col-span-1">
               <MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search findings"
                 aria-label="Search cases by finding"
-                className={inputClass + " !pl-8 w-44"}
+                className={inputClass + " w-full !pl-8"}
               />
             </div>
           </div>
