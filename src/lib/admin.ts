@@ -1,6 +1,6 @@
 import type { RadCase } from "../types";
 
-type GlobalCaseOverride = Pick<
+export type GlobalCaseOverride = Pick<
   RadCase,
   | "id"
   | "title"
@@ -13,6 +13,22 @@ type GlobalCaseOverride = Pick<
   | "credit"
   | "regions"
 > & { updatedAt?: string };
+
+export function applyGlobalCaseOverride(
+  cases: RadCase[],
+  override: GlobalCaseOverride,
+): RadCase[] {
+  return cases.map((radCase) => {
+    if (!radCase.seed || radCase.id !== override.id) return radCase;
+    return {
+      ...radCase,
+      ...override,
+      id: radCase.id,
+      seed: true,
+      createdAt: radCase.createdAt,
+    };
+  });
+}
 
 async function errorMessage(response: Response): Promise<string> {
   try {
@@ -29,17 +45,7 @@ export async function mergeGlobalCaseOverrides(cases: RadCase[]): Promise<RadCas
     if (!response.ok) return cases;
     const body = (await response.json()) as { overrides?: Record<string, GlobalCaseOverride> };
     const overrides = body.overrides ?? {};
-    return cases.map((radCase) => {
-      const override = radCase.seed ? overrides[radCase.id] : undefined;
-      if (!override) return radCase;
-      return {
-        ...radCase,
-        ...override,
-        id: radCase.id,
-        seed: true,
-        createdAt: radCase.createdAt,
-      };
-    });
+    return Object.values(overrides).reduce(applyGlobalCaseOverride, cases);
   } catch {
     return cases;
   }
@@ -65,7 +71,7 @@ export async function adminLogout(): Promise<void> {
   await fetch("/api/admin-auth", { method: "DELETE", credentials: "same-origin" });
 }
 
-export async function saveGlobalCaseOverride(radCase: RadCase): Promise<void> {
+export async function saveGlobalCaseOverride(radCase: RadCase): Promise<GlobalCaseOverride> {
   const response = await fetch("/api/admin-overrides", {
     method: "PUT",
     credentials: "same-origin",
@@ -73,4 +79,7 @@ export async function saveGlobalCaseOverride(radCase: RadCase): Promise<void> {
     body: JSON.stringify({ case: radCase }),
   });
   if (!response.ok) throw new Error(await errorMessage(response));
+  const body = (await response.json()) as { override?: GlobalCaseOverride };
+  if (!body.override) throw new Error("The server did not confirm the saved case.");
+  return body.override;
 }

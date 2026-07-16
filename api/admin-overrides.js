@@ -115,18 +115,27 @@ async function saveOverride(override) {
     const cases = { ...current.cases, [override.id]: override };
     try {
       await writeStore(cases, override.updatedAt, current.etag);
-      return;
     } catch (error) {
       if (!isPreconditionFailure(error)) throw error;
+      continue;
     }
+    const confirmed = await readStore();
+    if (confirmed.cases[override.id]?.updatedAt === override.updatedAt) return;
   }
 
   // Some Blob stores can repeatedly return an ETag that their conditional
   // write endpoint rejects. The origin read above is uncached, so merge once
   // more and use the store's normal overwrite path instead of blocking the
   // admin indefinitely.
-  const latest = await readStore();
-  await writeStore({ ...latest.cases, [override.id]: override }, override.updatedAt);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const latest = await readStore();
+    await writeStore({ ...latest.cases, [override.id]: override }, override.updatedAt);
+    await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    const confirmed = await readStore();
+    if (confirmed.cases[override.id]?.updatedAt === override.updatedAt) return;
+  }
+
+  throw new Error("The case save could not be confirmed. Please publish it again.");
 }
 
 export default async function handler(req, res) {

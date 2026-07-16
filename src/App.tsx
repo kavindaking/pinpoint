@@ -20,7 +20,11 @@ import { Study } from "./views/Study";
 import { Stats } from "./views/Stats";
 import { Viewer } from "./views/Viewer";
 import { Admin } from "./views/Admin";
-import { mergeGlobalCaseOverrides, saveGlobalCaseOverride } from "./lib/admin";
+import {
+  applyGlobalCaseOverride,
+  mergeGlobalCaseOverrides,
+  saveGlobalCaseOverride,
+} from "./lib/admin";
 
 type Route =
   | { view: "landing" }
@@ -289,8 +293,8 @@ export default function App() {
             existing={route.existing}
             onSave={async (c) => {
               if (route.back === "admin") {
-                await saveGlobalCaseOverride(c);
-                await refreshCases();
+                const saved = await saveGlobalCaseOverride(c);
+                setCases((current) => applyGlobalCaseOverride(current, saved));
                 setRoute({ view: "admin" });
               } else {
                 await saveCase(c);
