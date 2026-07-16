@@ -86,7 +86,7 @@ export function Home({
       </div>
 
       {/* Right: round configuration */}
-      <Panel className="p-5">
+      <Panel className="p-5 lg:translate-y-10">
         <div className="flex flex-col gap-5">
           {hasPersonal && (
             <div>
