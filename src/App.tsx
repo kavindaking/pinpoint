@@ -309,6 +309,11 @@ export default function App() {
             )}
             startAt={route.startAt}
             onExit={() => setRoute({ view: route.back })}
+            onEdit={
+              route.back === "admin"
+                ? (current) => setRoute({ view: "editor", existing: current, back: "admin" })
+                : undefined
+            }
           />
         )}
         {route.view === "viewer" && (

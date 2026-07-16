@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, CaretLeft, CaretRight, Eye, EyeSlash } from "../components/icons";
+import { ArrowLeft, CaretLeft, CaretRight, Eye, EyeSlash, PencilSimple } from "../components/icons";
 import type { RadCase } from "../types";
 import { isDicom, isStack } from "../types";
 import { ImageViewer } from "../components/ImageViewer";
@@ -12,10 +12,12 @@ export function Study({
   cases,
   startAt,
   onExit,
+  onEdit,
 }: {
   cases: RadCase[];
   startAt: number;
   onExit: () => void;
+  onEdit?: (radCase: RadCase) => void;
 }) {
   const [index, setIndex] = useState(startAt);
   const [showRegions, setShowRegions] = useState(true);
@@ -51,6 +53,12 @@ export function Study({
             {showRegions ? <EyeSlash size={16} /> : <Eye size={16} />}
             <span className="hidden sm:inline">{showRegions ? "Hide answer" : "Show answer"}</span>
           </Button>
+          {onEdit && (
+            <Button onClick={() => onEdit(current)} className="!px-3">
+              <PencilSimple size={16} />
+              <span className="hidden sm:inline">Edit case</span>
+            </Button>
+          )}
           <span className="font-mono text-sm text-ink-faint">
             {index + 1}/{cases.length}
           </span>
