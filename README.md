@@ -168,3 +168,18 @@ they are for training the eye, not for clinical reference.
 
 Pinpoint is an educational game. It is not a medical device and must not be used for
 diagnosis or clinical decision-making.
+# Pinpoint
+
+## Account backend setup
+
+Pinpoint remains fully functional in guest mode when Supabase is not configured.
+To enable account sign-in:
+
+1. Create a Supabase project.
+2. Apply `supabase/migrations/202607170001_auth_foundation.sql` in the SQL editor.
+3. Enable the Google provider under Authentication → Providers.
+4. Add the production site URL and `http://localhost:5173` as allowed redirect URLs.
+5. Copy `.env.example` to `.env.local` and add the project URL and publishable key.
+6. Add the same two variables to the Vercel project environment.
+
+Never expose a Supabase secret or service-role key through a `VITE_` variable.

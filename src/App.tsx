@@ -25,6 +25,8 @@ import {
   mergeGlobalCaseOverrides,
   saveGlobalCaseOverride,
 } from "./lib/admin";
+import { useAuth } from "./lib/auth";
+import { AccountMenu } from "./components/AccountMenu";
 
 type Route =
   | { view: "landing" }
@@ -83,6 +85,7 @@ export default function App() {
   const [settings, setSettings] = useState<ScoringSettings>(loadSettings);
   const [history, setHistory] = useState<RoundRecord[]>(loadHistory);
   const [theme, toggleTheme] = useTheme();
+  const auth = useAuth();
 
   const refreshCases = useCallback(async () => {
     const localCases = await getAllCases();
@@ -204,14 +207,17 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="ml-auto cursor-pointer rounded-(--radius-ctl) p-2 text-ink-dim transition-colors hover:bg-surface-2 hover:text-ink"
-            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          >
-            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <AccountMenu auth={auth} />
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="cursor-pointer rounded-(--radius-ctl) p-2 text-ink-dim transition-colors hover:bg-surface-2 hover:text-ink"
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            >
+              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+          </div>
         </div>
       </header>
 
