@@ -227,7 +227,7 @@ export function Cases({
       <p className="mb-6 text-sm text-ink-dim">
         {description ?? (isLibrary
           ? "Curated, openly licensed teaching cases. Play or study them; they stay put."
-          : "Your own uploads for personalised study, stored only in this browser.")}
+          : "Your own uploads for personalised study. They stay on this device, and signed-in cases sync privately to your account.")}
       </p>
       <input
         ref={importInput}
@@ -387,6 +387,7 @@ export function Cases({
                   {c.modality} · {c.subspecialty} · {c.regions.length}{" "}
                   {c.regions.length === 1 ? "region" : "regions"}
                   {c.seed && " · bundled"}
+                  {c.cloud && " · synced"}
                 </p>
                 <div className="mt-2 flex items-center gap-1 border-t border-line pt-2.5">
                   <Button className="!px-2.5 !py-1 !text-xs" onClick={() => onStudy(c)}>

@@ -323,6 +323,7 @@ export function Editor({
         posterBlob: hasDicom ? dicomPoster : replacingExisting ? undefined : existing?.posterBlob,
         credit: credit.trim() || undefined,
         seed: existing?.seed,
+        cloud: replacingExisting ? undefined : existing?.cloud,
         createdAt: existing?.createdAt ?? Date.now(),
       });
     } catch (cause) {

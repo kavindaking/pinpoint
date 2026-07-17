@@ -131,6 +131,11 @@ Only upload images that are de-identified and that you have the right to use.
   short code resolves through `/api/share` to the blob's CDN URL. `vercel.json` sets
   immutable cache headers on `/cases`, `/samples`, and `/assets`. The blob store is linked
   to the Vercel project, which injects `BLOB_READ_WRITE_TOKEN` at runtime.
+- **Private account media** (`api/r2.js`, `src/lib/r2.ts`): signed-in personal case images
+  and DICOM files upload directly to a private Cloudflare R2 bucket using ten-minute
+  presigned URLs. The Vercel function verifies the Supabase access token and derives every
+  object path from that user's ID. Metadata and object references live in the RLS-protected
+  `user_cases` table; R2 credentials exist only as server-side Vercel variables.
 
 ## Bundled case images
 
@@ -177,9 +182,17 @@ To enable account sign-in:
 
 1. Create a Supabase project.
 2. Apply `supabase/migrations/202607170001_auth_foundation.sql` in the SQL editor.
-3. Enable the Google provider under Authentication → Providers.
-4. Add the production site URL and `http://localhost:5173` as allowed redirect URLs.
+3. Apply `supabase/migrations/202607170002_user_cases.sql` for private personal cases.
+4. Keep email authentication enabled and configure the production and localhost redirect URLs.
 5. Copy `.env.example` to `.env.local` and add the project URL and publishable key.
-6. Add the same two variables to the Vercel project environment.
+6. Add the same two public variables to the Vercel project environment.
 
-Never expose a Supabase secret or service-role key through a `VITE_` variable.
+To enable private case media sync:
+
+1. Create a private R2 bucket named `pinpoint-user-cases`.
+2. Create an R2 Object Read & Write token restricted to that bucket.
+3. Add the four server-only `R2_*` values from `.env.example` to Vercel.
+4. Add an R2 CORS rule allowing `GET`, `HEAD`, and `PUT` from the production origin and
+   `http://localhost:5173`. Do not make the bucket public.
+
+Never expose a Supabase secret, service-role key, or R2 credential through a `VITE_` variable.

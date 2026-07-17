@@ -62,6 +62,18 @@ export interface CaseRegion {
   slice?: number;
 }
 
+export interface CloudCaseMedia {
+  imageKeys?: string[];
+  dicomKeys?: string[];
+  posterKey?: string;
+}
+
+export interface CloudCaseRef {
+  media: CloudCaseMedia;
+  objectKeys: string[];
+  updatedAt: string;
+}
+
 export interface RadCase {
   id: string;
   title: string;
@@ -99,6 +111,8 @@ export interface RadCase {
   creditUrl?: string;
   /** Curated bundled case. Absent/false means a user's personal case. */
   seed?: boolean;
+  /** Private R2 media references for an authenticated user's synced case. */
+  cloud?: CloudCaseRef;
   createdAt: number;
 }
 

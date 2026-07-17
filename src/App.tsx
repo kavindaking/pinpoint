@@ -27,6 +27,7 @@ import {
 } from "./lib/admin";
 import { useAuth } from "./lib/auth";
 import { AccountMenu } from "./components/AccountMenu";
+import { deleteCloudCase, loadCloudCases, syncCaseToCloud } from "./lib/r2";
 
 type Route =
   | { view: "landing" }
@@ -75,6 +76,15 @@ function pickRound(cases: RadCase[], f: RoundFilters): RadCase[] {
   return shuffled;
 }
 
+function hasLocalCaseMedia(radCase: RadCase): boolean {
+  return !!(
+    radCase.imageBlob ||
+    radCase.imageBlobs?.length ||
+    radCase.dicomBlobs?.length ||
+    radCase.posterBlob
+  );
+}
+
 export default function App() {
   const [route, setRoute] = useState<Route>(() =>
     location.pathname.replace(/\/$/, "") === "/admin"
@@ -89,8 +99,17 @@ export default function App() {
 
   const refreshCases = useCallback(async () => {
     const localCases = await getAllCases();
-    setCases(await mergeGlobalCaseOverrides(localCases));
-  }, []);
+    const byId = new Map(localCases.map((radCase) => [radCase.id, radCase]));
+    if (auth.user) {
+      try {
+        const cloudCases = await loadCloudCases();
+        for (const radCase of cloudCases) byId.set(radCase.id, radCase);
+      } catch (error) {
+        console.warn("Could not load cloud cases; using the local cache.", error);
+      }
+    }
+    setCases(await mergeGlobalCaseOverrides([...byId.values()]));
+  }, [auth.user]);
 
   useEffect(() => {
     void refreshCases();
@@ -268,6 +287,7 @@ export default function App() {
               setRoute({ view: "editor", existing: c, back: "personal" })
             }
             onDelete={async (c) => {
+              if (auth.user && c.cloud) await deleteCloudCase(c);
               await deleteCase(c);
               refreshCases();
             }}
@@ -303,7 +323,8 @@ export default function App() {
                 setCases((current) => applyGlobalCaseOverride(current, saved));
                 setRoute({ view: "admin" });
               } else {
-                await saveCase(c);
+                if (hasLocalCaseMedia(c) || !c.cloud) await saveCase(c);
+                if (auth.user) await syncCaseToCloud(c);
                 await refreshCases();
                 setRoute({ view: "personal" });
               }
