@@ -24,7 +24,6 @@ export { CircleHalf } from "@phosphor-icons/react/dist/csr/CircleHalf";
 export { CornersOut } from "@phosphor-icons/react/dist/csr/CornersOut";
 export { Cube } from "@phosphor-icons/react/dist/csr/Cube";
 export { FolderOpen } from "@phosphor-icons/react/dist/csr/FolderOpen";
-export { GoogleLogo } from "@phosphor-icons/react/dist/csr/GoogleLogo";
 export { MagnifyingGlassMinus } from "@phosphor-icons/react/dist/csr/MagnifyingGlassMinus";
 export { MagnifyingGlassPlus } from "@phosphor-icons/react/dist/csr/MagnifyingGlassPlus";
 export { Warning } from "@phosphor-icons/react/dist/csr/Warning";

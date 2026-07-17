@@ -3,12 +3,14 @@ import type { User } from "@supabase/supabase-js";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
 export interface AuthController {
+  clearError: () => void;
   configured: boolean;
   error: string | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
+  sendEmailCode: (email: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   user: User | null;
+  verifyEmailCode: (email: string, code: string) => Promise<boolean>;
 }
 
 export function useAuth(): AuthController {
@@ -43,14 +45,38 @@ export function useAuth(): AuthController {
     };
   }, []);
 
-  const signInWithGoogle = useCallback(async () => {
-    if (!supabase) return;
+  const clearError = useCallback(() => setError(null), []);
+
+  const sendEmailCode = useCallback(async (email: string) => {
+    if (!supabase) return false;
     setError(null);
-    const { error: signInError } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${location.origin}/` },
+    const { error: signInError } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        emailRedirectTo: `${location.origin}/`,
+        shouldCreateUser: true,
+      },
     });
-    if (signInError) setError(signInError.message);
+    if (signInError) {
+      setError(signInError.message);
+      return false;
+    }
+    return true;
+  }, []);
+
+  const verifyEmailCode = useCallback(async (email: string, code: string) => {
+    if (!supabase) return false;
+    setError(null);
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: code.trim(),
+      type: "email",
+    });
+    if (verifyError) {
+      setError(verifyError.message);
+      return false;
+    }
+    return true;
   }, []);
 
   const signOut = useCallback(async () => {
@@ -61,11 +87,13 @@ export function useAuth(): AuthController {
   }, []);
 
   return {
+    clearError,
     configured: isSupabaseConfigured,
     error,
     loading,
-    signInWithGoogle,
+    sendEmailCode,
     signOut,
     user,
+    verifyEmailCode,
   };
 }
