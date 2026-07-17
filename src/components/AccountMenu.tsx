@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CaretDown, CircleNotch, SignOut, UserCircle } from "./icons";
 import type { AuthController } from "../lib/auth";
+import { Turnstile } from "./Turnstile";
 
 export function AccountMenu({ auth }: { auth: AuthController }) {
   const [open, setOpen] = useState(false);
@@ -8,7 +9,20 @@ export function AccountMenu({ auth }: { auth: AuthController }) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileFailed, setTurnstileFailed] = useState(false);
+  const [turnstileEpoch, setTurnstileEpoch] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  const handleTurnstileToken = useCallback((token: string) => {
+    setTurnstileToken(token);
+    if (token) setTurnstileFailed(false);
+  }, []);
+
+  const handleTurnstileError = useCallback(() => {
+    setTurnstileFailed(true);
+    setTurnstileToken("");
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -66,9 +80,14 @@ export function AccountMenu({ auth }: { auth: AuthController }) {
                 onSubmit={async (event) => {
                   event.preventDefault();
                   setSubmitting(true);
-                  const sent = await auth.sendEmailCode(email);
+                  const sent = await auth.sendEmailCode(email, turnstileToken);
                   setSubmitting(false);
-                  if (sent) setStep("code");
+                  if (sent) {
+                    setStep("code");
+                  } else {
+                    setTurnstileToken("");
+                    setTurnstileEpoch((value) => value + 1);
+                  }
                 }}
               >
                 <label htmlFor="account-email" className="text-xs font-medium text-ink-dim">
@@ -85,9 +104,21 @@ export function AccountMenu({ auth }: { auth: AuthController }) {
                   placeholder="you@example.com"
                   className="mt-1.5 w-full rounded-(--radius-ctl) border border-line bg-bg px-3 py-2 text-sm text-ink placeholder:text-ink-faint"
                 />
+                <div className="mt-3 rounded-(--radius-ctl) border border-line bg-bg p-2">
+                  <Turnstile
+                    key={turnstileEpoch}
+                    onToken={handleTurnstileToken}
+                    onError={handleTurnstileError}
+                  />
+                </div>
+                {turnstileFailed && (
+                  <p className="mt-2 text-xs text-miss">
+                    Security verification could not load. Check your connection and try again.
+                  </p>
+                )}
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || !turnstileToken}
                   className="mt-3 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-(--radius-ctl) bg-accent px-3 py-2 text-sm font-medium text-bg transition-colors hover:bg-accent-strong disabled:cursor-wait disabled:opacity-60"
                 >
                   {submitting && <CircleNotch size={16} className="animate-spin" />}
@@ -156,10 +187,11 @@ export function AccountMenu({ auth }: { auth: AuthController }) {
                   <button
                     type="button"
                     disabled={submitting}
-                    onClick={async () => {
-                      setSubmitting(true);
-                      await auth.sendEmailCode(email);
-                      setSubmitting(false);
+                    onClick={() => {
+                      auth.clearError();
+                      setTurnstileToken("");
+                      setTurnstileEpoch((value) => value + 1);
+                      setStep("email");
                     }}
                     className="cursor-pointer text-accent hover:text-accent-strong disabled:cursor-wait disabled:opacity-60"
                   >

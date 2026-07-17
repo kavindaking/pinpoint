@@ -7,7 +7,7 @@ export interface AuthController {
   configured: boolean;
   error: string | null;
   loading: boolean;
-  sendEmailCode: (email: string) => Promise<boolean>;
+  sendEmailCode: (email: string, turnstileToken: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   user: User | null;
   verifyEmailCode: (email: string, code: string) => Promise<boolean>;
@@ -47,18 +47,21 @@ export function useAuth(): AuthController {
 
   const clearError = useCallback(() => setError(null), []);
 
-  const sendEmailCode = useCallback(async (email: string) => {
+  const sendEmailCode = useCallback(async (email: string, turnstileToken: string) => {
     if (!supabase) return false;
     setError(null);
-    const { error: signInError } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        emailRedirectTo: `${location.origin}/`,
-        shouldCreateUser: true,
-      },
+    const response = await fetch("/api/request-otp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        turnstileToken,
+      }),
     });
-    if (signInError) {
-      setError(signInError.message);
+
+    const result = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      setError(result.error ?? "Unable to send the sign-in email. Please try again.");
       return false;
     }
     return true;

@@ -136,6 +136,10 @@ Only upload images that are de-identified and that you have the right to use.
   presigned URLs. The Vercel function verifies the Supabase access token and derives every
   object path from that user's ID. Metadata and object references live in the RLS-protected
   `user_cases` table; R2 credentials exist only as server-side Vercel variables.
+- **Bot protection** (`api/request-otp.js`, `src/components/Turnstile.tsx`): Cloudflare
+  Turnstile protects passwordless email requests. Its short-lived, single-use token is
+  checked server-side for the expected hostname and `sign_in` action before Supabase may
+  send an email. The Turnstile secret remains server-only in Vercel.
 
 ## Bundled case images
 
@@ -186,6 +190,10 @@ To enable account sign-in:
 4. Keep email authentication enabled and configure the production and localhost redirect URLs.
 5. Copy `.env.example` to `.env.local` and add the project URL and publishable key.
 6. Add the same two public variables to the Vercel project environment.
+7. Create a managed Cloudflare Turnstile widget for the production hostname and localhost.
+   Add its public site key as `VITE_TURNSTILE_SITE_KEY`, its server-only secret as
+   `TURNSTILE_SECRET_KEY`, and the comma-separated allowed hosts as
+   `TURNSTILE_ALLOWED_HOSTNAMES`.
 
 To enable private case media sync:
 
