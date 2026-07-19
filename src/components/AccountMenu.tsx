@@ -63,7 +63,7 @@ export function AccountMenu({ auth }: { auth: AuthController }) {
           <div
             role="dialog"
             aria-label="Sign in to Pinpoint"
-            className="absolute right-0 top-11 z-20 w-[min(22rem,calc(100vw-2rem))] rounded-(--radius-panel) border border-line bg-surface p-5 shadow-(--shadow)"
+            className="absolute right-0 top-11 z-20 w-[min(25rem,calc(100vw-1rem))] rounded-(--radius-panel) border border-line bg-surface p-5 shadow-(--shadow)"
           >
             <h2 className="text-base font-semibold text-ink">
               {step === "email" ? "Sign in to Pinpoint" : "Check your email"}
@@ -104,7 +104,7 @@ export function AccountMenu({ auth }: { auth: AuthController }) {
                   placeholder="you@example.com"
                   className="mt-1.5 w-full rounded-(--radius-ctl) border border-line bg-bg px-3 py-2 text-sm text-ink placeholder:text-ink-faint"
                 />
-                <div className="mt-3 rounded-(--radius-ctl) border border-line bg-bg p-2">
+                <div className="mt-3 flex min-h-[4.75rem] items-center justify-center overflow-hidden rounded-(--radius-ctl) border border-line bg-bg p-1">
                   <Turnstile
                     key={turnstileEpoch}
                     onToken={handleTurnstileToken}

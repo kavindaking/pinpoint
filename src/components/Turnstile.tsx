@@ -94,5 +94,10 @@ export function Turnstile({
     return <p className="text-xs text-miss">Security verification is not configured.</p>;
   }
 
-  return <div ref={containerRef} className="min-h-16 w-full overflow-hidden" />;
+  return (
+    <div
+      ref={containerRef}
+      className="flex min-h-[4.25rem] w-full items-center justify-center overflow-hidden"
+    />
+  );
 }
