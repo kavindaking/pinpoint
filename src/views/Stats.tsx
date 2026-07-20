@@ -1,11 +1,17 @@
 import { useMemo, useState } from "react";
 import { ChartBar, Trash } from "../components/icons";
 import type { RoundRecord } from "../types";
-import { clearHistory } from "../lib/storage";
 import { Button, EmptyState, Panel } from "../components/ui";
 
-export function Stats({ history, onChanged }: { history: RoundRecord[]; onChanged: () => void }) {
+export function Stats({
+  history,
+  onClear,
+}: {
+  history: RoundRecord[];
+  onClear: () => Promise<void>;
+}) {
   const [confirming, setConfirming] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const agg = useMemo(() => {
     const attempts = history.reduce((a, r) => a + r.hits + r.nears + r.misses, 0);
@@ -44,13 +50,18 @@ export function Stats({ history, onChanged }: { history: RoundRecord[]; onChange
             <span className="flex items-center gap-2">
               <Button
                 variant="danger"
-                onClick={() => {
-                  clearHistory();
-                  setConfirming(false);
-                  onChanged();
+                disabled={clearing}
+                onClick={async () => {
+                  setClearing(true);
+                  try {
+                    await onClear();
+                    setConfirming(false);
+                  } finally {
+                    setClearing(false);
+                  }
                 }}
               >
-                Clear all history
+                {clearing ? "Clearing…" : "Clear all history"}
               </Button>
               <Button onClick={() => setConfirming(false)}>Keep</Button>
             </span>

@@ -1,6 +1,6 @@
 import { upload } from "@vercel/blob/client";
 import type { RadCase } from "../types";
-import { exportCases, importCases } from "./storage";
+import { exportCases, importCases, parseImportedCases } from "./storage";
 
 /**
  * Cloud sharing for case sets. A set (cases plus their embedded images) is
@@ -51,13 +51,21 @@ export function codeFromInput(input: string): string {
 
 /** Import a shared set by code or link. Returns how many cases were added. */
 export async function importFromCloud(input: string): Promise<number> {
+  const text = await downloadSharedSet(input);
+  return importCases(text);
+}
+
+export async function parseCasesFromCloud(input: string): Promise<RadCase[]> {
+  return parseImportedCases(await downloadSharedSet(input));
+}
+
+async function downloadSharedSet(input: string): Promise<string> {
   const code = codeFromInput(input);
   if (!code) throw new Error("Enter a share code or link.");
   const res = await fetch(`/api/share?id=${encodeURIComponent(code)}`);
   if (res.status === 404) throw new Error("No shared set found for that code.");
   if (!res.ok) throw new Error("Could not reach the cloud. Try again shortly.");
-  const text = await res.text();
-  return importCases(text);
+  return res.text();
 }
 
 /** A friendly share link that deep-links straight into an import. */

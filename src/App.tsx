@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Moon, Sun } from "./components/icons";
 import type { CaseOutcome, RadCase, RoundFilters, RoundRecord, ScoringSettings } from "./types";
+import { DEFAULT_SCORING } from "./types";
 import {
   appendHistory,
+  clearHistory,
   deleteCase,
   getAllCases,
   loadHistory,
   loadSettings,
+  parseImportedCases,
   saveCase,
   saveSettings,
 } from "./lib/storage";
+import {
+  clearAccountHistory,
+  loadAccountHistory,
+  loadAccountSettings,
+  saveAccountRound,
+  saveAccountSettings,
+} from "./lib/accountData";
 import { Landing } from "./views/Landing";
 import { Home } from "./views/Home";
 import { Play } from "./views/Play";
@@ -94,16 +104,31 @@ export default function App() {
   const [cases, setCases] = useState<RadCase[]>([]);
   const [settings, setSettings] = useState<ScoringSettings>(loadSettings);
   const [history, setHistory] = useState<RoundRecord[]>(loadHistory);
+  const [accountDataError, setAccountDataError] = useState<string | null>(null);
   const [theme, toggleTheme] = useTheme();
   const auth = useAuth();
 
   const refreshCases = useCallback(async () => {
     const localCases = await getAllCases();
-    const byId = new Map(localCases.map((radCase) => [radCase.id, radCase]));
+    // Browser-owned personal cases belong to guest mode. Authenticated users
+    // only see bundled cases plus their own RLS-protected cloud cases.
+    const visibleLocalCases = auth.user
+      ? localCases.filter((radCase) => radCase.seed)
+      : localCases;
+    const byId = new Map(visibleLocalCases.map((radCase) => [radCase.id, radCase]));
     if (auth.user) {
       try {
         const cloudCases = await loadCloudCases();
         for (const radCase of cloudCases) byId.set(radCase.id, radCase);
+        // Older builds cached signed-in cases in the shared browser database.
+        // Remove only duplicates that are safely present in this user's cloud
+        // account so they cannot reappear after sign-out or account switching.
+        const cloudIds = new Set(cloudCases.map((radCase) => radCase.id));
+        await Promise.all(
+          localCases
+            .filter((radCase) => !radCase.seed && cloudIds.has(radCase.id))
+            .map((radCase) => deleteCase(radCase)),
+        );
       } catch (error) {
         console.warn("Could not load cloud cases; using the local cache.", error);
       }
@@ -115,32 +140,76 @@ export default function App() {
     void refreshCases();
   }, [refreshCases]);
 
+  useEffect(() => {
+    let active = true;
+    setAccountDataError(null);
+    if (!auth.user) {
+      setHistory(loadHistory());
+      setSettings(loadSettings());
+      return () => {
+        active = false;
+      };
+    }
+    void Promise.all([loadAccountHistory(), loadAccountSettings()])
+      .then(([nextHistory, nextSettings]) => {
+        if (!active) return;
+        setHistory(nextHistory);
+        setSettings(nextSettings);
+      })
+      .catch((error) => {
+        if (!active) return;
+        // Never fall back to another browser user's data while authenticated.
+        setHistory([]);
+        setSettings({ ...DEFAULT_SCORING });
+        setAccountDataError(
+          error instanceof Error ? error.message : "Could not load private account data.",
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [auth.user]);
+
   // A shared-set deep link (?share=CODE) imports on load, then lands the user
   // in My cases so they can see what arrived.
   useEffect(() => {
+    if (auth.loading) return;
     const params = new URLSearchParams(location.search);
     const code = params.get("share") ?? params.get("import");
     if (!code) return;
     window.history.replaceState(null, "", location.pathname);
     (async () => {
       try {
-        const { importFromCloud } = await import("./lib/cloud");
-        await importFromCloud(code);
+        const { importFromCloud, parseCasesFromCloud } = await import("./lib/cloud");
+        if (auth.user) {
+          const imported = await parseCasesFromCloud(code);
+          for (const radCase of imported) await syncCaseToCloud(radCase);
+        } else {
+          await importFromCloud(code);
+        }
         refreshCases();
         setRoute({ view: "personal" });
       } catch {
         /* invalid or unreachable code; stay on the landing page */
       }
     })();
-  }, [refreshCases]);
+  }, [auth.loading, auth.user, refreshCases]);
 
   const updateSettings = useCallback((s: ScoringSettings) => {
     setSettings(s);
-    saveSettings(s);
-  }, []);
+    if (auth.user) {
+      void saveAccountSettings(s).catch((error) => {
+        setAccountDataError(
+          error instanceof Error ? error.message : "Could not save account settings.",
+        );
+      });
+    } else {
+      saveSettings(s);
+    }
+  }, [auth.user]);
 
   const finishRound = useCallback(
-    (outcomes: CaseOutcome[], filters: RoundFilters) => {
+    async (outcomes: CaseOutcome[], filters: RoundFilters) => {
       const flat = outcomes.flatMap((c) => c.outcomes);
       const byModality: Record<string, { hits: number; total: number }> = {};
       for (const c of outcomes) {
@@ -161,11 +230,25 @@ export default function App() {
         misses: flat.filter((o) => o.result === "miss").length,
         byModality,
       };
-      appendHistory(record);
-      setHistory(loadHistory());
+      // Leave the playable screen immediately so the final action cannot be
+      // submitted twice while the private cloud write is in flight.
       setRoute({ view: "summary", outcomes, filters });
+      if (auth.user) {
+        try {
+          await saveAccountRound(record, outcomes, filters);
+          setHistory(await loadAccountHistory());
+          setAccountDataError(null);
+        } catch (error) {
+          setAccountDataError(
+            error instanceof Error ? error.message : "Could not save this round.",
+          );
+        }
+      } else {
+        appendHistory(record);
+        setHistory(loadHistory());
+      }
     },
-    [settings],
+    [auth.user, settings],
   );
 
   const nav = useMemo(
@@ -241,6 +324,13 @@ export default function App() {
       </header>
 
       <main className="flex-1">
+        {accountDataError && (
+          <div className="mx-auto mt-4 w-full max-w-6xl px-4">
+            <div className="rounded-(--radius-panel) border border-miss/40 bg-miss/10 px-4 py-3 text-sm text-miss">
+              Your private account data could not be synced: {accountDataError}
+            </div>
+          </div>
+        )}
         {route.view === "landing" && (
           <Landing
             onPlay={() => setRoute({ view: "home" })}
@@ -288,7 +378,7 @@ export default function App() {
             }
             onDelete={async (c) => {
               if (auth.user && c.cloud) await deleteCloudCase(c);
-              await deleteCase(c);
+              if (!auth.user || !c.cloud) await deleteCase(c);
               refreshCases();
             }}
             onStudy={(c) => {
@@ -297,6 +387,27 @@ export default function App() {
               setRoute({ view: "study", startAt: Math.max(0, list.indexOf(c)), back });
             }}
             onChanged={refreshCases}
+            onImport={
+              auth.user
+                ? async (json) => {
+                    const imported = await parseImportedCases(json);
+                    for (const radCase of imported) await syncCaseToCloud(radCase);
+                    return imported.length;
+                  }
+                : undefined
+            }
+            onImportCases={
+              auth.user
+                ? async (imported) => {
+                    for (const radCase of imported) await syncCaseToCloud(radCase);
+                  }
+                : undefined
+            }
+            description={
+              route.view === "personal" && auth.user
+                ? "Your private uploads, available only to this signed-in account."
+                : undefined
+            }
           />
         )}
         {route.view === "admin" && (
@@ -323,8 +434,14 @@ export default function App() {
                 setCases((current) => applyGlobalCaseOverride(current, saved));
                 setRoute({ view: "admin" });
               } else {
-                if (hasLocalCaseMedia(c) || !c.cloud) await saveCase(c);
-                if (auth.user) await syncCaseToCloud(c);
+                if (auth.user) {
+                  await syncCaseToCloud(c);
+                  // Successful cloud upload makes the old shared-browser copy
+                  // unnecessary and prevents it leaking into guest mode.
+                  await deleteCase(c).catch(() => undefined);
+                } else if (hasLocalCaseMedia(c) || !c.cloud) {
+                  await saveCase(c);
+                }
                 await refreshCases();
                 setRoute({ view: "personal" });
               }
@@ -355,7 +472,18 @@ export default function App() {
           />
         )}
         {route.view === "stats" && (
-          <Stats history={history} onChanged={() => setHistory(loadHistory())} />
+          <Stats
+            history={history}
+            onClear={async () => {
+              if (auth.user) {
+                await clearAccountHistory();
+                setHistory([]);
+              } else {
+                clearHistory();
+                setHistory([]);
+              }
+            }}
+          />
         )}
       </main>
 

@@ -197,6 +197,7 @@ export async function loadCloudCases(): Promise<RadCase[]> {
   const { data, error } = await supabase!
     .from("user_cases")
     .select("case_id, case_data, media, object_keys, updated_at")
+    .eq("user_id", user.id)
     .order("updated_at", { ascending: true });
   if (error) throw new Error(error.message);
 

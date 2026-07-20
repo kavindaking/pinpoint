@@ -182,12 +182,12 @@ export async function exportCases(cases: RadCase[]): Promise<string> {
   return JSON.stringify({ app: "pinpoint", version: 1, cases: out }, null, 2);
 }
 
-export async function importCases(json: string): Promise<number> {
+export async function parseImportedCases(json: string): Promise<RadCase[]> {
   const parsed = JSON.parse(json);
   if (parsed?.app !== "pinpoint" || !Array.isArray(parsed.cases)) {
     throw new Error("Not a Pinpoint case file");
   }
-  let count = 0;
+  const cases: RadCase[] = [];
   for (const entry of parsed.cases as ExportedCase[]) {
     const { imageData, imageDatas, dicomDatas, posterData, ...rest } = entry;
     if (!rest.id || !rest.title || !Array.isArray(rest.regions)) continue;
@@ -207,10 +207,15 @@ export async function importCases(json: string): Promise<number> {
       !c.dicomUrls?.length
     )
       continue;
-    await saveCase(c);
-    count++;
+    cases.push(c);
   }
-  return count;
+  return cases;
+}
+
+export async function importCases(json: string): Promise<number> {
+  const cases = await parseImportedCases(json);
+  for (const radCase of cases) await saveCase(radCase);
+  return cases.length;
 }
 
 function blobToDataUrl(blob: Blob): Promise<string> {

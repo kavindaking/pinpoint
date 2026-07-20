@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, CircleNotch, CloudArrowDown, CloudArrowUp, Copy, LinkSimple } from "./icons";
 import type { RadCase } from "../types";
-import { importFromCloud, publishCases, shareLink, type Shared } from "../lib/cloud";
+import { importFromCloud, parseCasesFromCloud, publishCases, shareLink, type Shared } from "../lib/cloud";
 import { Button, inputClass } from "./ui";
 
 /**
@@ -12,10 +12,12 @@ import { Button, inputClass } from "./ui";
 export function CloudPanel({
   cases,
   onImported,
+  onImportCases,
   onClose,
 }: {
   cases: RadCase[];
   onImported: () => void;
+  onImportCases?: (cases: RadCase[]) => Promise<void>;
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState<"share" | "import" | null>(null);
@@ -43,7 +45,14 @@ export function CloudPanel({
     setError(null);
     setMsg(null);
     try {
-      const n = await importFromCloud(code);
+      let n: number;
+      if (onImportCases) {
+        const imported = await parseCasesFromCloud(code);
+        await onImportCases(imported);
+        n = imported.length;
+      } else {
+        n = await importFromCloud(code);
+      }
       setMsg(`Imported ${n} ${n === 1 ? "case" : "cases"} into My cases.`);
       setCode("");
       onImported();

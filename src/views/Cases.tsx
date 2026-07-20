@@ -100,6 +100,8 @@ export function Cases({
   onDelete,
   onStudy,
   onChanged,
+  onImport,
+  onImportCases,
   canEditLibrary = false,
   heading,
   description,
@@ -112,6 +114,8 @@ export function Cases({
   onDelete: (c: RadCase) => void;
   onStudy: (c: RadCase) => void;
   onChanged: () => void;
+  onImport?: (json: string) => Promise<number>;
+  onImportCases?: (cases: RadCase[]) => Promise<void>;
   canEditLibrary?: boolean;
   heading?: string;
   description?: string;
@@ -166,7 +170,8 @@ export function Cases({
   const doImport = async (file: File | undefined) => {
     if (!file) return;
     try {
-      const n = await importCases(await file.text());
+      const json = await file.text();
+      const n = onImport ? await onImport(json) : await importCases(json);
       setNotice(`Imported ${n} ${n === 1 ? "case" : "cases"}.`);
       onChanged();
     } catch {
@@ -241,7 +246,12 @@ export function Cases({
       />
 
       {!isLibrary && showCloud && (
-        <CloudPanel cases={scoped} onImported={onChanged} onClose={() => setShowCloud(false)} />
+        <CloudPanel
+          cases={scoped}
+          onImported={onChanged}
+          onImportCases={onImportCases}
+          onClose={() => setShowCloud(false)}
+        />
       )}
 
       {scoped.length > 0 && (
