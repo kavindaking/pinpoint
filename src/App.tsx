@@ -3,11 +3,9 @@ import { Moon, Sun } from "./components/icons";
 import type { CaseOutcome, RadCase, RoundFilters, RoundRecord, ScoringSettings } from "./types";
 import { DEFAULT_SCORING } from "./types";
 import {
-  appendHistory,
   clearHistory,
   deleteCase,
   getAllCases,
-  loadHistory,
   loadSettings,
   parseImportedCases,
   saveCase,
@@ -103,7 +101,7 @@ export default function App() {
   );
   const [cases, setCases] = useState<RadCase[]>([]);
   const [settings, setSettings] = useState<ScoringSettings>(loadSettings);
-  const [history, setHistory] = useState<RoundRecord[]>(loadHistory);
+  const [history, setHistory] = useState<RoundRecord[]>([]);
   const [accountDataError, setAccountDataError] = useState<string | null>(null);
   const [theme, toggleTheme] = useTheme();
   const auth = useAuth();
@@ -144,7 +142,10 @@ export default function App() {
     let active = true;
     setAccountDataError(null);
     if (!auth.user) {
-      setHistory(loadHistory());
+      // Guest progress is deliberately session-only. Remove history written
+      // by older builds so refreshing or revisiting always starts clean.
+      clearHistory();
+      setHistory([]);
       setSettings(loadSettings());
       return () => {
         active = false;
@@ -244,8 +245,7 @@ export default function App() {
           );
         }
       } else {
-        appendHistory(record);
-        setHistory(loadHistory());
+        setHistory((current) => [...current, record]);
       }
     },
     [auth.user, settings],
@@ -479,7 +479,6 @@ export default function App() {
                 await clearAccountHistory();
                 setHistory([]);
               } else {
-                clearHistory();
                 setHistory([]);
               }
             }}

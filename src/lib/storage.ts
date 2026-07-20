@@ -1,4 +1,4 @@
-import type { RadCase, RoundRecord, ScoringSettings } from "../types";
+import type { RadCase, ScoringSettings } from "../types";
 import { DEFAULT_SCORING, inferSubspecialty } from "../types";
 import { SEED_CASES } from "../data/seedCases";
 import { parseDicomFrames } from "./dicom";
@@ -6,7 +6,8 @@ import { parseDicomFrames } from "./dicom";
 /**
  * Persistence is fully client-side so the app can be hosted as static files:
  *   - cases (including uploaded image blobs) live in IndexedDB,
- *   - settings, theme, and round history live in localStorage.
+ *   - guest settings and theme live in localStorage,
+ *   - guest round history stays in memory and disappears on refresh.
  * Seed cases are copied into IndexedDB on first run; a tombstone list keeps
  * deleted seeds from resurrecting on the next visit.
  */
@@ -135,21 +136,7 @@ export function saveSettings(s: ScoringSettings): void {
   localStorage.setItem(LS_SETTINGS, JSON.stringify(s));
 }
 
-export function loadHistory(): RoundRecord[] {
-  try {
-    return JSON.parse(localStorage.getItem(LS_HISTORY) ?? "[]");
-  } catch {
-    return [];
-  }
-}
-
-export function appendHistory(r: RoundRecord): void {
-  const all = loadHistory();
-  all.push(r);
-  // Keep the last 200 rounds; localStorage is not a data warehouse.
-  localStorage.setItem(LS_HISTORY, JSON.stringify(all.slice(-200)));
-}
-
+/** Remove history left behind by builds that persisted guest rounds. */
 export function clearHistory(): void {
   localStorage.removeItem(LS_HISTORY);
 }
