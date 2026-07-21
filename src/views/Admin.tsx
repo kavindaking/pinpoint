@@ -4,6 +4,7 @@ import { Button, Panel, inputClass } from "../components/ui";
 import type { RadCase } from "../types";
 import { adminLogin, adminLogout, adminSession } from "../lib/admin";
 import { Cases } from "./Cases";
+import { AcquisitionQueue } from "./AcquisitionQueue";
 
 export function Admin({
   cases,
@@ -21,6 +22,7 @@ export function Admin({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [section, setSection] = useState<"library" | "acquisition">("library");
 
   useEffect(() => {
     adminSession()
@@ -86,6 +88,18 @@ export function Admin({
     );
   }
 
+  if (section === "acquisition") {
+    return (
+      <AcquisitionQueue
+        onLibrary={() => setSection("library")}
+        onSignOut={async () => {
+          await adminLogout();
+          setAuthenticated(false);
+        }}
+      />
+    );
+  }
+
   return (
     <Cases
       scope="library"
@@ -94,15 +108,20 @@ export function Admin({
       heading="Admin library"
       description="Adjust ground-truth regions and teaching details. Saved changes are published globally."
       headerActions={
-        <Button
-          onClick={async () => {
-            await adminLogout();
-            setAuthenticated(false);
-          }}
-        >
-          <SignOut size={15} />
-          Sign out
-        </Button>
+        <>
+          <Button variant="primary" onClick={() => setSection("acquisition")}>
+            Image acquisition
+          </Button>
+          <Button
+            onClick={async () => {
+              await adminLogout();
+              setAuthenticated(false);
+            }}
+          >
+            <SignOut size={15} />
+            Sign out
+          </Button>
+        </>
       }
       onNew={() => {}}
       onEdit={onEdit}
