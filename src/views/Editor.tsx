@@ -22,6 +22,7 @@ import {
 import { ImageViewer, type ViewerPoint } from "../components/ImageViewer";
 import { ShapeSvg } from "../components/ShapeSvg";
 import { Button, Field, Panel, Select, inputClass } from "../components/ui";
+import { analyseCaseMedia } from "../lib/mediaQa";
 import {
   CompressedDicomError,
   parseDicomFrames,
@@ -93,6 +94,7 @@ export function Editor({
   );
   const [dicomPoster, setDicomPoster] = useState<Blob | undefined>(existing?.posterBlob);
   const [regions, setRegions] = useState<CaseRegion[]>(existing?.regions ?? []);
+  const [mediaQa, setMediaQa] = useState(existing?.mediaQa);
   const [slice, setSlice] = useState(0);
 
   const [tool, setTool] = useState<Tool>("ellipse");
@@ -217,6 +219,7 @@ export function Editor({
   const handleFiles = async (files: FileList | null, fromFolder = false) => {
     if (!files || files.length === 0) return;
     setImportNotice(null);
+    setMediaQa(undefined);
     const selected = [...files];
     // A DICOM folder can contain DICOMDIR and other extensionless support
     // files. Try every file in a folder and retain only decodable image files.
@@ -255,8 +258,9 @@ export function Editor({
       setDicomFrameCount(decodedImages.length);
       setDicomPoster(await makeDicomPoster(decodedImages[Math.floor(decodedImages.length / 2)]));
       const first = decodedImages[0];
-      if (first.modality === "CT") setModality("CT");
-      else if (first.modality === "MR") setModality("MRI");
+      const detectedModality: Modality = first.modality === "CT" ? "CT" : first.modality === "MR" ? "MRI" : modality;
+      setModality(detectedModality);
+      setMediaQa(await analyseCaseMedia(parsed.map((entry) => entry.blob), detectedModality, true));
       setError(
         compressed
           ? `${decodedImages.length} slices loaded. Some compressed files were skipped.`
@@ -285,6 +289,7 @@ export function Editor({
     setDicomBlobs([]);
     setDicomFrameCount(0);
     setDicomPoster(undefined);
+    setMediaQa(await analyseCaseMedia(images, modality, false));
     setRegions([]);
     setPolyPoints([]);
     setSlice(0);
@@ -295,6 +300,7 @@ export function Editor({
     if (!title.trim()) return setError("Give the case a finding or diagnosis name.");
     if (!explanation.trim()) return setError("Add a teaching point before saving the case.");
     if (regions.length === 0) return setError("Mark at least one abnormality region on the image.");
+    if (mediaQa?.status === "fail") return setError("Resolve the failed media-quality checks before saving.");
     setError(null);
     const hasImages = blobs.length > 0;
     const hasDicom = dicomBlobs.length > 0;
@@ -326,6 +332,7 @@ export function Editor({
         posterBlob: hasDicom ? dicomPoster : replacingExisting ? undefined : existing?.posterBlob,
         credit: credit.trim() || undefined,
         creditUrl: existing?.creditUrl,
+        mediaQa,
         seed: existing?.seed,
         cloud: replacingExisting ? undefined : existing?.cloud,
         createdAt: existing?.createdAt ?? Date.now(),
@@ -527,6 +534,23 @@ export function Editor({
               e.currentTarget.value = "";
             }}
           />
+          {mediaQa && (
+            <Panel className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">Automated media QA</p>
+                <span className={`font-mono text-xs ${mediaQa.status === "fail" ? "text-miss" : mediaQa.status === "warning" ? "text-[#d6a03d]" : "text-hit"}`}>
+                  {mediaQa.status.toUpperCase()}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-ink-dim">
+                {mediaQa.fileCount} file{mediaQa.fileCount === 1 ? "" : "s"} · {(mediaQa.totalBytes / 1024 / 1024).toFixed(1)} MB
+                {mediaQa.minWidth && mediaQa.minHeight ? ` · minimum ${mediaQa.minWidth}×${mediaQa.minHeight}px` : ""}
+              </p>
+              {[...mediaQa.errors, ...mediaQa.warnings].map((message) => (
+                <p key={message} className={`mt-2 text-xs ${mediaQa.errors.includes(message) ? "text-miss" : "text-[#d6a03d]"}`}>{message}</p>
+              ))}
+            </Panel>
+          )}
         </div>
 
         {/* Metadata side */}

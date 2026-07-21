@@ -42,6 +42,21 @@ function httpsUrl(value, optional = true) {
   if (url.protocol !== "https:") throw new Error("Attribution links must use HTTPS.");
   return url.toString();
 }
+function qaReport(value) {
+  if (!value || !/^[a-f0-9]{64}$/i.test(String(value.fingerprint))) throw new Error("A valid media QA fingerprint is required.");
+  if (!["pass", "warning", "fail"].includes(value.status) || value.status === "fail") throw new Error("The media failed automated QA.");
+  return {
+    status: value.status,
+    checkedAt: text(value.checkedAt, 60),
+    fileCount: Math.max(1, Math.floor(Number(value.fileCount) || 0)),
+    totalBytes: Math.max(1, Math.floor(Number(value.totalBytes) || 0)),
+    minWidth: Math.max(0, Math.floor(Number(value.minWidth) || 0)) || undefined,
+    minHeight: Math.max(0, Math.floor(Number(value.minHeight) || 0)) || undefined,
+    fingerprint: String(value.fingerprint).toLowerCase(),
+    warnings: Array.isArray(value.warnings) ? value.warnings.slice(0, 20).map((item) => text(item, 300)) : [],
+    errors: [],
+  };
+}
 function sanitize(value) {
   if (!value || !/^library-[a-z0-9-]+$/i.test(String(value.id))) throw new Error("Invalid library case ID.");
   for (const [key, values] of Object.entries(ENUMS)) if (!values.has(value[key])) throw new Error(`Invalid ${key}.`);
@@ -55,7 +70,7 @@ function sanitize(value) {
     modality: value.modality, bodyRegion: value.bodyRegion, subspecialty: value.subspecialty, difficulty: value.difficulty,
     regions: value.regions.map((r, i) => ({ id: text(r?.id || `region-${i + 1}`, 120), label: text(r?.label, 160, true), slice: Math.max(0, Math.floor(Number(r?.slice) || 0)), shape: shape(r?.shape) })),
     imageUrl, imageUrls, dicomUrls, dicomFrameCount: dicomUrls?.length ? Math.max(dicomUrls.length, Math.floor(Number(value.dicomFrameCount) || 0)) : undefined,
-    posterUrl: mediaUrl(value.posterUrl), credit: text(value.credit, 500, true), creditUrl: httpsUrl(value.creditUrl), seed: true,
+    posterUrl: mediaUrl(value.posterUrl), credit: text(value.credit, 500, true), creditUrl: httpsUrl(value.creditUrl), mediaQa: qaReport(value.mediaQa), seed: true,
     createdAt: Number(value.createdAt) || Date.now(), updatedAt: new Date().toISOString(),
   };
 }
@@ -87,6 +102,8 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     const radCase = sanitize(body?.case);
+    const duplicate = (await readAll()).find((item) => item.id !== radCase.id && item.mediaQa?.fingerprint === radCase.mediaQa.fingerprint);
+    if (duplicate) throw new Error(`This media is already published as “${duplicate.title}”.`);
     await put(`${PREFIX}${radCase.id}/${Date.now()}-${randomUUID()}.json`, JSON.stringify({ version: 1, case: radCase }), { access: "public", addRandomSuffix: false, allowOverwrite: false, cacheControlMaxAge: 60, contentType: "application/json" });
     res.status(200).json({ case: radCase });
   } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : String(error) }); }

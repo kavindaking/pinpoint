@@ -89,6 +89,15 @@ export async function loadAcquisitions(): Promise<AcquisitionRecord[]> {
   return ((await response.json()) as { records?: AcquisitionRecord[] }).records ?? [];
 }
 
+export async function loadAcquisitionHistory(id: string): Promise<AcquisitionRecord[]> {
+  const response = await fetch(`/api/admin-acquisitions?id=${encodeURIComponent(id)}`, {
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+  return ((await response.json()) as { history?: AcquisitionRecord[] }).history ?? [];
+}
+
 export async function saveAcquisition(
   record: AcquisitionRecord | AcquisitionDraft,
 ): Promise<AcquisitionRecord> {

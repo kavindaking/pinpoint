@@ -181,6 +181,9 @@ function sanitizeDraftCase(value) {
   const imageUrls = urls(value.imageUrls);
   const dicomUrls = urls(value.dicomUrls);
   if (!imageUrl && !imageUrls?.length && !dicomUrls?.length) throw new Error("The case draft has no uploaded media.");
+  if (!value.mediaQa || !/^[a-f0-9]{64}$/i.test(String(value.mediaQa.fingerprint)) || value.mediaQa.status === "fail") {
+    throw new Error("The case draft needs a passing media QA result.");
+  }
   return {
     id: String(value.id),
     title: boundedText(value.title, 160),
@@ -198,6 +201,17 @@ function sanitizeDraftCase(value) {
     posterUrl: safeUrl(value.posterUrl, true),
     credit: boundedText(value.credit, 500, true),
     creditUrl: safeUrl(value.creditUrl, true),
+    mediaQa: {
+      status: value.mediaQa.status === "warning" ? "warning" : "pass",
+      checkedAt: boundedText(value.mediaQa.checkedAt, 60),
+      fileCount: Math.max(1, Math.floor(Number(value.mediaQa.fileCount) || 0)),
+      totalBytes: Math.max(1, Math.floor(Number(value.mediaQa.totalBytes) || 0)),
+      minWidth: Math.max(0, Math.floor(Number(value.mediaQa.minWidth) || 0)) || undefined,
+      minHeight: Math.max(0, Math.floor(Number(value.mediaQa.minHeight) || 0)) || undefined,
+      fingerprint: String(value.mediaQa.fingerprint).toLowerCase(),
+      warnings: Array.isArray(value.mediaQa.warnings) ? value.mediaQa.warnings.slice(0, 20).map((item) => boundedText(item, 300)) : [],
+      errors: [],
+    },
     seed: true,
     createdAt: Number(value.createdAt) || Date.now(),
   };
@@ -238,6 +252,20 @@ async function readAll() {
   return records.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+async function readHistory(id) {
+  const page = await list({ prefix: `${PREFIX}${id}/`, limit: 100 });
+  const versions = [];
+  for (const blob of [...page.blobs].sort((a, b) => b.uploadedAt - a.uploadedAt).slice(0, 50)) {
+    try {
+      const payload = await readJson(blob.url);
+      if (payload?.record) versions.push(payload.record);
+    } catch {
+      // Skip an unreadable historical version without hiding the rest.
+    }
+  }
+  return versions;
+}
+
 async function saveVersion(id, payload) {
   await put(`${PREFIX}${id}/${Date.now()}-${randomUUID()}.json`, encryptPayload(payload), {
     access: "public",
@@ -257,7 +285,13 @@ export default async function handler(req, res) {
 
   if (req.method === "GET") {
     try {
-      res.status(200).json({ records: await readAll() });
+      const id = typeof req.query?.id === "string" ? req.query.id : "";
+      if (id) {
+        if (!/^candidate-[a-z0-9-]+$/i.test(id)) throw new Error("Invalid candidate identifier.");
+        res.status(200).json({ history: await readHistory(id) });
+      } else {
+        res.status(200).json({ records: await readAll() });
+      }
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
     }

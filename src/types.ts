@@ -74,6 +74,18 @@ export interface CloudCaseRef {
   updatedAt: string;
 }
 
+export interface MediaQaReport {
+  status: "pass" | "warning" | "fail";
+  checkedAt: string;
+  fileCount: number;
+  totalBytes: number;
+  minWidth?: number;
+  minHeight?: number;
+  fingerprint: string;
+  warnings: string[];
+  errors: string[];
+}
+
 export interface RadCase {
   id: string;
   title: string;
@@ -109,6 +121,8 @@ export interface RadCase {
   credit?: string;
   /** Link to the original image/file page for attribution and licence details. */
   creditUrl?: string;
+  /** Automated checks recorded when admin media is prepared. */
+  mediaQa?: MediaQaReport;
   /** Curated bundled case. Absent/false means a user's personal case. */
   seed?: boolean;
   /** Private R2 media references for an authenticated user's synced case. */

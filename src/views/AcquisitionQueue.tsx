@@ -19,6 +19,7 @@ import {
   authoringReady,
   deleteAcquisition,
   loadAcquisitions,
+  loadAcquisitionHistory,
   publicationReady,
   saveAcquisition,
   type AcquisitionDraft,
@@ -81,8 +82,14 @@ function CandidateEditor({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [history, setHistory] = useState<AcquisitionRecord[]>([]);
   const checked = Object.values(draft.checks).filter(Boolean).length;
   const ready = checked === Object.keys(draft.checks).length;
+
+  useEffect(() => {
+    if (!initial) return;
+    void loadAcquisitionHistory(initial.id).then(setHistory).catch(() => setHistory([]));
+  }, [initial]);
 
   const update = <K extends keyof AcquisitionDraft>(key: K, value: AcquisitionDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
@@ -310,6 +317,25 @@ function CandidateEditor({
             className={inputClass + " resize-y"}
           />
         </Field>
+
+        {initial && (
+          <div className="border-t border-line pt-4">
+            <p className="mb-3 text-xs font-medium uppercase tracking-[0.14em] text-ink-faint">Audit history</p>
+            <div className="flex max-h-40 flex-col gap-2 overflow-y-auto">
+              {history.length === 0 ? <p className="text-xs text-ink-faint">No earlier versions.</p> : history.map((version, index) => (
+                <div key={`${version.updatedAt}-${index}`} className="rounded-(--radius-ctl) border border-line px-3 py-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-ink-dim">{STATUS_LABEL[version.status]}</span>
+                    <span className="font-mono text-ink-faint">{new Date(version.updatedAt).toLocaleString()}</span>
+                  </div>
+                  <p className="mt-1 text-ink-faint">
+                    {completedCheckCount(version)}/8 gates · {version.draftCase ? "case draft saved" : "no case draft"}{version.libraryCaseId ? " · published" : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {draft.status === "approved" && ready && (
           <p className="flex items-center gap-2 rounded-(--radius-ctl) bg-hit/10 px-3 py-2 text-sm text-hit">
