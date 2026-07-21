@@ -16,6 +16,7 @@ import {
   ACQUISITION_STATUSES,
   EMPTY_ACQUISITION_CHECKS,
   completedCheckCount,
+  authoringReady,
   deleteAcquisition,
   loadAcquisitions,
   publicationReady,
@@ -64,11 +65,13 @@ function CandidateEditor({
   onSaved,
   onCancel,
   onBuildCase,
+  onPublishCase,
 }: {
   initial: AcquisitionRecord | null;
   onSaved: (record: AcquisitionRecord) => void;
   onCancel: () => void;
   onBuildCase: (record: AcquisitionRecord) => void;
+  onPublishCase: (record: AcquisitionRecord) => Promise<AcquisitionRecord>;
 }) {
   const [draft, setDraft] = useState<AcquisitionDraft | AcquisitionRecord>(() =>
     initial ? { ...initial, checks: { ...initial.checks } } : emptyDraft(),
@@ -77,6 +80,7 @@ function CandidateEditor({
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
   const checked = Object.values(draft.checks).filter(Boolean).length;
   const ready = checked === Object.keys(draft.checks).length;
 
@@ -318,9 +322,25 @@ function CandidateEditor({
             {saving ? <CircleNotch size={15} className="animate-spin" /> : <FloppyDisk size={15} />}
             {saving ? "Saving…" : "Save candidate"}
           </Button>
-          {initial && initial.status === "approved" && publicationReady(initial) && (
-            <Button variant="primary" onClick={() => onBuildCase(initial)}>
-              <FilePlus size={15} /> {initial.libraryCaseId ? "Rebuild library case" : "Build library case"}
+          {initial && authoringReady(initial) && (
+            <Button onClick={() => onBuildCase(initial)}>
+              <FilePlus size={15} /> {initial.draftCase ? "Edit case draft" : "Prepare case draft"}
+            </Button>
+          )}
+          {initial && initial.status === "approved" && publicationReady(initial) && initial.draftCase && (
+            <Button
+              variant="primary"
+              disabled={publishing}
+              onClick={async () => {
+                setPublishing(true);
+                setError(null);
+                try { onSaved(await onPublishCase(initial)); }
+                catch (cause) { setError(cause instanceof Error ? cause.message : "Could not publish this case."); }
+                finally { setPublishing(false); }
+              }}
+            >
+              {publishing ? <CircleNotch size={15} className="animate-spin" /> : <FloppyDisk size={15} />}
+              {initial.libraryCaseId ? "Republish library case" : "Publish to library"}
             </Button>
           )}
           {initial &&
@@ -359,10 +379,12 @@ export function AcquisitionQueue({
   onLibrary,
   onSignOut,
   onBuildCase,
+  onPublishCase,
 }: {
   onLibrary: () => void;
   onSignOut: () => void | Promise<void>;
   onBuildCase: (record: AcquisitionRecord) => void;
+  onPublishCase: (record: AcquisitionRecord) => Promise<AcquisitionRecord>;
 }) {
   const [records, setRecords] = useState<AcquisitionRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -536,6 +558,7 @@ export function AcquisitionQueue({
               setEditing(saved);
             }}
             onBuildCase={onBuildCase}
+            onPublishCase={onPublishCase}
           />
         )}
       </div>

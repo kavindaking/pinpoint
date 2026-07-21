@@ -1,4 +1,4 @@
-import type { Difficulty, Modality, Subspecialty } from "../types";
+import type { Difficulty, Modality, RadCase, Subspecialty } from "../types";
 
 export const ACQUISITION_STATUSES = [
   "candidate",
@@ -53,6 +53,7 @@ export interface AcquisitionRecord {
   reviewer?: string;
   notes?: string;
   libraryCaseId?: string;
+  draftCase?: RadCase;
   checks: AcquisitionChecks;
   createdAt: string;
   updatedAt: string;
@@ -120,4 +121,10 @@ export function completedCheckCount(record: Pick<AcquisitionRecord, "checks">): 
 
 export function publicationReady(record: AcquisitionRecord): boolean {
   return completedCheckCount(record) === Object.keys(record.checks).length;
+}
+
+export function authoringReady(record: AcquisitionRecord): boolean {
+  return Object.entries(record.checks).every(
+    ([key, complete]) => key === "regionReviewed" || complete,
+  );
 }

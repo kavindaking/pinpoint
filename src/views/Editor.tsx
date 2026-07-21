@@ -67,11 +67,13 @@ export function Editor({
   onSave,
   onCancel,
   adminMode = false,
+  draftMode = false,
 }: {
   existing: RadCase | null;
   onSave: (c: RadCase) => void | Promise<void>;
   onCancel: () => void;
   adminMode?: boolean;
+  draftMode?: boolean;
 }) {
   const [title, setTitle] = useState(existing?.title ?? "");
   const [stem, setStem] = useState(existing?.stem ?? "");
@@ -291,6 +293,7 @@ export function Editor({
   const save = async () => {
     if (!previewCase) return setError("Upload an image first.");
     if (!title.trim()) return setError("Give the case a finding or diagnosis name.");
+    if (!explanation.trim()) return setError("Add a teaching point before saving the case.");
     if (regions.length === 0) return setError("Mark at least one abnormality region on the image.");
     setError(null);
     const hasImages = blobs.length > 0;
@@ -341,7 +344,7 @@ export function Editor({
           <ArrowLeft size={16} weight="bold" />
         </Button>
         <h1 className="text-xl font-semibold tracking-tight">
-          {adminMode ? "Adjust library case" : existing ? "Edit case" : "New case"}
+          {draftMode ? "Prepare case draft" : adminMode ? "Adjust library case" : existing ? "Edit case" : "New case"}
         </h1>
         <div className="ml-auto flex items-center gap-3">
           <div className="text-right text-sm">
@@ -350,7 +353,7 @@ export function Editor({
           </div>
           <Button variant="primary" onClick={() => void save()} disabled={saving}>
             <FloppyDisk size={16} />
-            {saving ? "Saving…" : adminMode ? "Publish changes" : "Save case"}
+            {saving ? "Saving…" : draftMode ? "Save draft" : adminMode ? "Publish changes" : "Save case"}
           </Button>
         </div>
       </div>

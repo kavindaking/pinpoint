@@ -8,24 +8,28 @@ import { AcquisitionQueue } from "./AcquisitionQueue";
 import type { AcquisitionRecord } from "../lib/acquisition";
 
 export function Admin({
+  initialSection = "library",
   cases,
   onEdit,
   onStudy,
   onChanged,
   onBuildCase,
+  onPublishCase,
 }: {
+  initialSection?: "library" | "acquisition";
   cases: RadCase[];
   onEdit: (radCase: RadCase) => void;
   onStudy: (radCase: RadCase) => void;
   onChanged: () => void;
   onBuildCase: (record: AcquisitionRecord) => void;
+  onPublishCase: (record: AcquisitionRecord) => Promise<AcquisitionRecord>;
 }) {
   const [checking, setChecking] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [section, setSection] = useState<"library" | "acquisition">("library");
+  const [section, setSection] = useState<"library" | "acquisition">(initialSection);
 
   useEffect(() => {
     adminSession()
@@ -95,6 +99,7 @@ export function Admin({
     return (
       <AcquisitionQueue
         onBuildCase={onBuildCase}
+        onPublishCase={onPublishCase}
         onLibrary={() => setSection("library")}
         onSignOut={async () => {
           await adminLogout();

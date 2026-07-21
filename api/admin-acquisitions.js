@@ -30,6 +30,7 @@ const SUBSPECIALTIES = new Set([
   "Breast",
 ]);
 const DIFFICULTIES = new Set(["easy", "medium", "hard"]);
+const BODY_REGIONS = new Set(["Chest", "Abdomen", "Head", "Spine", "Upper limb", "Lower limb", "Pelvis"]);
 const LICENCES = new Set([
   "unverified",
   "CC0",
@@ -155,9 +156,50 @@ function sanitizeRecord(value, existing = null) {
     reviewer: boundedText(value.reviewer, 160, true),
     notes: boundedText(value.notes, 4000, true),
     libraryCaseId: boundedText(value.libraryCaseId, 160, true),
+    draftCase: sanitizeDraftCase(value.draftCase),
     checks,
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function sanitizeDraftCase(value) {
+  if (value == null) return undefined;
+  if (!value || typeof value !== "object" || !/^library-[a-z0-9-]+$/i.test(String(value.id))) {
+    throw new Error("Invalid case draft.");
+  }
+  if (!MODALITIES.has(value.modality) || !BODY_REGIONS.has(value.bodyRegion) || !SUBSPECIALTIES.has(value.subspecialty) || !DIFFICULTIES.has(value.difficulty)) {
+    throw new Error("Invalid draft classification.");
+  }
+  if (!Array.isArray(value.regions) || value.regions.length < 1 || value.regions.length > 100) {
+    throw new Error("The case draft needs between 1 and 100 marked regions.");
+  }
+  const serializedRegions = JSON.stringify(value.regions);
+  if (serializedRegions.length > 100000) throw new Error("The case marking is too large.");
+  const urls = (items) => Array.isArray(items) ? items.slice(0, 1000).map((item) => safeUrl(item, false)) : undefined;
+  const imageUrl = safeUrl(value.imageUrl, true);
+  const imageUrls = urls(value.imageUrls);
+  const dicomUrls = urls(value.dicomUrls);
+  if (!imageUrl && !imageUrls?.length && !dicomUrls?.length) throw new Error("The case draft has no uploaded media.");
+  return {
+    id: String(value.id),
+    title: boundedText(value.title, 160),
+    stem: boundedText(value.stem, 500, true),
+    explanation: boundedText(value.explanation, 3000),
+    modality: value.modality,
+    bodyRegion: value.bodyRegion,
+    subspecialty: value.subspecialty,
+    difficulty: value.difficulty,
+    regions: JSON.parse(serializedRegions),
+    imageUrl,
+    imageUrls,
+    dicomUrls,
+    dicomFrameCount: Math.max(0, Math.floor(Number(value.dicomFrameCount) || 0)) || undefined,
+    posterUrl: safeUrl(value.posterUrl, true),
+    credit: boundedText(value.credit, 500, true),
+    creditUrl: safeUrl(value.creditUrl, true),
+    seed: true,
+    createdAt: Number(value.createdAt) || Date.now(),
   };
 }
 

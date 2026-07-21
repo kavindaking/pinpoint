@@ -36,7 +36,12 @@ import {
 import { useAuth } from "./lib/auth";
 import { AccountMenu } from "./components/AccountMenu";
 import { deleteCloudCase, loadCloudCases, syncCaseToCloud } from "./lib/r2";
-import { loadPublishedLibraryCases, publishLibraryCase } from "./lib/libraryCases";
+import {
+  loadPublishedLibraryCases,
+  prepareLibraryCaseMedia,
+  publishLibraryCase,
+  publishPreparedLibraryCase,
+} from "./lib/libraryCases";
 import { saveAcquisition, type AcquisitionRecord } from "./lib/acquisition";
 
 type Route =
@@ -46,7 +51,7 @@ type Route =
   | { view: "summary"; outcomes: CaseOutcome[]; filters: RoundFilters }
   | { view: "library" }
   | { view: "personal" }
-  | { view: "admin" }
+  | { view: "admin"; section?: "library" | "acquisition" }
   | { view: "editor"; existing: RadCase | null; back: "personal" | "admin"; acquisition?: AcquisitionRecord }
   | { view: "study"; startAt: number; back: "library" | "personal" | "admin" }
   | { view: "viewer" }
@@ -415,6 +420,7 @@ export default function App() {
         )}
         {route.view === "admin" && (
           <Admin
+            initialSection={route.section}
             cases={cases}
             onEdit={(c) => setRoute({ view: "editor", existing: c, back: "admin" })}
             onStudy={(c) => {
@@ -427,9 +433,9 @@ export default function App() {
             }}
             onChanged={() => void refreshCases()}
             onBuildCase={(record) => {
-              const published = record.libraryCaseId
+              const published = record.draftCase ?? (record.libraryCaseId
                 ? cases.find((radCase) => radCase.id === record.libraryCaseId)
-                : undefined;
+                : undefined);
               const bodyRegion = record.subspecialty === "Abdominal" ? "Abdomen"
                 : record.subspecialty === "Neuro" || record.subspecialty === "Head & Neck" ? "Head"
                   : record.subspecialty === "MSK" ? "Upper limb" : "Chest";
@@ -444,6 +450,17 @@ export default function App() {
                 },
               });
             }}
+            onPublishCase={async (record) => {
+              if (!record.draftCase) throw new Error("Prepare and mark the case before publishing.");
+              const published = await publishPreparedLibraryCase(record.draftCase);
+              const updated = await saveAcquisition({
+                ...record,
+                draftCase: published,
+                libraryCaseId: published.id,
+              });
+              setCases((current) => [...current.filter((item) => item.id !== published.id), published]);
+              return updated;
+            }}
           />
         )}
         {route.view === "editor" && (
@@ -451,17 +468,17 @@ export default function App() {
             existing={route.existing}
             onSave={async (c) => {
               if (route.back === "admin") {
-                if (route.acquisition || c.id.startsWith("library-")) {
+                if (route.acquisition) {
+                  const draftCase = await prepareLibraryCaseMedia(c);
+                  await saveAcquisition({ ...route.acquisition, draftCase });
+                } else if (c.id.startsWith("library-")) {
                   const published = await publishLibraryCase(c);
-                  if (route.acquisition) {
-                    await saveAcquisition({ ...route.acquisition, libraryCaseId: published.id });
-                  }
                   setCases((current) => [...current.filter((item) => item.id !== published.id), published]);
                 } else {
                   const saved = await saveGlobalCaseOverride(c);
                   setCases((current) => applyGlobalCaseOverride(current, saved));
                 }
-                setRoute({ view: "admin" });
+                setRoute({ view: "admin", section: route.acquisition ? "acquisition" : "library" });
               } else {
                 if (auth.user) {
                   await syncCaseToCloud(c);
@@ -475,8 +492,13 @@ export default function App() {
                 setRoute({ view: "personal" });
               }
             }}
-            onCancel={() => setRoute({ view: route.back })}
+            onCancel={() => setRoute(
+              route.back === "admin"
+                ? { view: "admin", section: route.acquisition ? "acquisition" : "library" }
+                : { view: route.back },
+            )}
             adminMode={route.back === "admin"}
+            draftMode={Boolean(route.acquisition)}
           />
         )}
         {route.view === "study" && (

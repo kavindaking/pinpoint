@@ -27,7 +27,7 @@ async function putMedia(path: string, blob: Blob) {
   return result.url;
 }
 
-export async function publishLibraryCase(radCase: RadCase): Promise<RadCase> {
+export async function prepareLibraryCaseMedia(radCase: RadCase): Promise<RadCase> {
   const revision = crypto.randomUUID();
   const root = `library/media/${radCase.id}/${revision}`;
   const images = radCase.imageBlobs ?? (radCase.imageBlob ? [radCase.imageBlob] : []);
@@ -53,6 +53,10 @@ export async function publishLibraryCase(radCase: RadCase): Promise<RadCase> {
     imageBlob: undefined, imageBlobs: undefined, dicomBlobs: undefined, posterBlob: undefined,
     cloud: undefined, seed: true,
   };
+  return published;
+}
+
+export async function publishPreparedLibraryCase(published: RadCase): Promise<RadCase> {
   const response = await fetch("/api/library-cases", {
     method: "PUT", credentials: "same-origin", headers: { "content-type": "application/json" },
     body: JSON.stringify({ case: published }),
@@ -61,4 +65,8 @@ export async function publishLibraryCase(radCase: RadCase): Promise<RadCase> {
   const saved = ((await response.json()) as { case?: RadCase }).case;
   if (!saved) throw new Error("The server did not confirm the published case.");
   return saved;
+}
+
+export async function publishLibraryCase(radCase: RadCase): Promise<RadCase> {
+  return publishPreparedLibraryCase(await prepareLibraryCaseMedia(radCase));
 }
