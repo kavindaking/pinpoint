@@ -8,7 +8,7 @@ export interface AuthController {
   error: string | null;
   loading: boolean;
   sendEmailCode: (email: string, turnstileToken: string) => Promise<boolean>;
-  signOut: () => Promise<void>;
+  signOut: () => Promise<boolean>;
   user: User | null;
   verifyEmailCode: (email: string, code: string) => Promise<boolean>;
 }
@@ -83,10 +83,14 @@ export function useAuth(): AuthController {
   }, []);
 
   const signOut = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase) return false;
     setError(null);
     const { error: signOutError } = await supabase.auth.signOut();
-    if (signOutError) setError(signOutError.message);
+    if (signOutError) {
+      setError(signOutError.message);
+      return false;
+    }
+    return true;
   }, []);
 
   return {

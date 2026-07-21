@@ -254,9 +254,10 @@ export function AccountMenu({ auth }: { auth: AuthController }) {
           <button
             type="button"
             role="menuitem"
-            onClick={() => {
+            onClick={async () => {
               setOpen(false);
-              void auth.signOut();
+              const signedOut = await auth.signOut();
+              if (signedOut) window.location.replace("/");
             }}
             className="mt-1 flex w-full cursor-pointer items-center gap-2 rounded-(--radius-ctl) px-3 py-2 text-left text-sm text-ink-dim transition-colors hover:bg-surface-2 hover:text-ink"
           >
