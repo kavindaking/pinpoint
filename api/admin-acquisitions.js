@@ -1,5 +1,11 @@
-import { randomUUID } from "node:crypto";
-import { get, list, put } from "@vercel/blob";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+  randomUUID,
+} from "node:crypto";
+import { list, put } from "@vercel/blob";
 import { hasSameOrigin, isAdminRequest } from "../server/admin-auth.js";
 
 const PREFIX = "admin/acquisitions/";
@@ -44,6 +50,52 @@ const CHECK_KEYS = [
   "clinicalFindingConfirmed",
   "regionReviewed",
 ];
+
+function encryptionKey() {
+  const secret = process.env.ACQUISITIONS_ENCRYPTION_SECRET || process.env.ADMIN_PASSWORD;
+  if (!secret) throw new Error("Acquisition encryption is not configured.");
+  return createHash("sha256").update(`pinpoint-acquisitions:${secret}`).digest();
+}
+
+function encryptPayload(payload) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(payload), "utf8"),
+    cipher.final(),
+  ]);
+  return JSON.stringify({
+    version: 1,
+    algorithm: "aes-256-gcm",
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    ciphertext: ciphertext.toString("base64"),
+  });
+}
+
+function decryptPayload(envelope) {
+  if (
+    !envelope ||
+    envelope.version !== 1 ||
+    envelope.algorithm !== "aes-256-gcm" ||
+    typeof envelope.iv !== "string" ||
+    typeof envelope.tag !== "string" ||
+    typeof envelope.ciphertext !== "string"
+  ) {
+    throw new Error("Invalid encrypted acquisition record.");
+  }
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    encryptionKey(),
+    Buffer.from(envelope.iv, "base64"),
+  );
+  decipher.setAuthTag(Buffer.from(envelope.tag, "base64"));
+  const plaintext = Buffer.concat([
+    decipher.update(Buffer.from(envelope.ciphertext, "base64")),
+    decipher.final(),
+  ]);
+  return JSON.parse(plaintext.toString("utf8"));
+}
 
 function boundedText(value, max, optional = false) {
   if (value == null && optional) return undefined;
@@ -109,9 +161,9 @@ function sanitizeRecord(value, existing = null) {
 }
 
 async function readJson(url) {
-  const result = await get(url, { access: "private", useCache: false });
-  if (!result || result.statusCode !== 200) return null;
-  return new Response(result.stream).json();
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) return null;
+  return decryptPayload(await response.json());
 }
 
 async function readAll() {
@@ -144,8 +196,8 @@ async function readAll() {
 }
 
 async function saveVersion(id, payload) {
-  await put(`${PREFIX}${id}/${Date.now()}-${randomUUID()}.json`, JSON.stringify(payload), {
-    access: "private",
+  await put(`${PREFIX}${id}/${Date.now()}-${randomUUID()}.json`, encryptPayload(payload), {
+    access: "public",
     addRandomSuffix: false,
     allowOverwrite: false,
     cacheControlMaxAge: 60,
