@@ -156,10 +156,39 @@ function sanitizeRecord(value, existing = null) {
     reviewer: boundedText(value.reviewer, 160, true),
     notes: boundedText(value.notes, 4000, true),
     libraryCaseId: boundedText(value.libraryCaseId, 160, true),
+    preparedMedia: sanitizePreparedMedia(value.preparedMedia),
     draftCase: sanitizeDraftCase(value.draftCase),
     checks,
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function sanitizeMediaQa(value) {
+  if (!value || !/^[a-f0-9]{64}$/i.test(String(value.fingerprint)) || value.status === "fail") {
+    throw new Error("Prepared media needs a passing media QA result.");
+  }
+  return {
+    status: value.status === "warning" ? "warning" : "pass",
+    checkedAt: boundedText(value.checkedAt, 60),
+    fileCount: Math.max(1, Math.floor(Number(value.fileCount) || 0)),
+    totalBytes: Math.max(1, Math.floor(Number(value.totalBytes) || 0)),
+    minWidth: Math.max(0, Math.floor(Number(value.minWidth) || 0)) || undefined,
+    minHeight: Math.max(0, Math.floor(Number(value.minHeight) || 0)) || undefined,
+    fingerprint: String(value.fingerprint).toLowerCase(),
+    warnings: Array.isArray(value.warnings) ? value.warnings.slice(0, 20).map((item) => boundedText(item, 300)) : [],
+    errors: [],
+  };
+}
+
+function sanitizePreparedMedia(value) {
+  if (value == null) return undefined;
+  if (!value || typeof value !== "object") throw new Error("Invalid prepared media.");
+  return {
+    imageUrl: safeUrl(value.imageUrl, false),
+    sourceAssetUrl: safeUrl(value.sourceAssetUrl, false),
+    preparedAt: boundedText(value.preparedAt, 60),
+    mediaQa: sanitizeMediaQa(value.mediaQa),
   };
 }
 
@@ -201,17 +230,7 @@ function sanitizeDraftCase(value) {
     posterUrl: safeUrl(value.posterUrl, true),
     credit: boundedText(value.credit, 500, true),
     creditUrl: safeUrl(value.creditUrl, true),
-    mediaQa: {
-      status: value.mediaQa.status === "warning" ? "warning" : "pass",
-      checkedAt: boundedText(value.mediaQa.checkedAt, 60),
-      fileCount: Math.max(1, Math.floor(Number(value.mediaQa.fileCount) || 0)),
-      totalBytes: Math.max(1, Math.floor(Number(value.mediaQa.totalBytes) || 0)),
-      minWidth: Math.max(0, Math.floor(Number(value.mediaQa.minWidth) || 0)) || undefined,
-      minHeight: Math.max(0, Math.floor(Number(value.mediaQa.minHeight) || 0)) || undefined,
-      fingerprint: String(value.mediaQa.fingerprint).toLowerCase(),
-      warnings: Array.isArray(value.mediaQa.warnings) ? value.mediaQa.warnings.slice(0, 20).map((item) => boundedText(item, 300)) : [],
-      errors: [],
-    },
+    mediaQa: sanitizeMediaQa(value.mediaQa),
     seed: true,
     createdAt: Number(value.createdAt) || Date.now(),
   };

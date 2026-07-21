@@ -42,7 +42,11 @@ import {
   publishLibraryCase,
   publishPreparedLibraryCase,
 } from "./lib/libraryCases";
-import { saveAcquisition, type AcquisitionRecord } from "./lib/acquisition";
+import {
+  prepareAcquisitionMedia,
+  saveAcquisition,
+  type AcquisitionRecord,
+} from "./lib/acquisition";
 
 type Route =
   | { view: "landing" }
@@ -98,6 +102,32 @@ function hasLocalCaseMedia(radCase: RadCase): boolean {
     radCase.dicomBlobs?.length ||
     radCase.posterBlob
   );
+}
+
+function acquisitionCaseDraft(record: AcquisitionRecord, cases: RadCase[]): RadCase {
+  const published = record.draftCase ?? (record.libraryCaseId
+    ? cases.find((radCase) => radCase.id === record.libraryCaseId)
+    : undefined);
+  if (published) return published;
+  const bodyRegion = record.subspecialty === "Abdominal" ? "Abdomen"
+    : record.subspecialty === "Neuro" || record.subspecialty === "Head & Neck" ? "Head"
+      : record.subspecialty === "MSK" ? "Upper limb" : "Chest";
+  return {
+    id: record.libraryCaseId ?? `library-${record.id.replace(/^candidate-/, "")}`,
+    title: record.finding,
+    explanation: "",
+    modality: record.modality,
+    bodyRegion,
+    subspecialty: record.subspecialty,
+    difficulty: record.targetDifficulty,
+    regions: [],
+    imageUrl: record.preparedMedia?.imageUrl,
+    credit: record.attribution,
+    creditUrl: record.sourceUrl,
+    mediaQa: record.preparedMedia?.mediaQa,
+    seed: true,
+    createdAt: Date.now(),
+  };
 }
 
 export default function App() {
@@ -433,22 +463,14 @@ export default function App() {
             }}
             onChanged={() => void refreshCases()}
             onBuildCase={(record) => {
-              const published = record.draftCase ?? (record.libraryCaseId
-                ? cases.find((radCase) => radCase.id === record.libraryCaseId)
-                : undefined);
-              const bodyRegion = record.subspecialty === "Abdominal" ? "Abdomen"
-                : record.subspecialty === "Neuro" || record.subspecialty === "Head & Neck" ? "Head"
-                  : record.subspecialty === "MSK" ? "Upper limb" : "Chest";
               setRoute({
                 view: "editor", back: "admin", acquisition: record,
-                existing: published ?? {
-                  id: record.libraryCaseId ?? `library-${record.id.replace(/^candidate-/, "")}`,
-                  title: record.finding, explanation: "", modality: record.modality,
-                  bodyRegion, subspecialty: record.subspecialty, difficulty: record.targetDifficulty,
-                  regions: [], credit: record.attribution,
-                  creditUrl: record.sourceUrl, seed: true, createdAt: Date.now(),
-                },
+                existing: acquisitionCaseDraft(record, cases),
               });
+            }}
+            onPrepareCase={async (record) => {
+              const preparedMedia = await prepareAcquisitionMedia(record);
+              return saveAcquisition({ ...record, preparedMedia });
             }}
             onPublishCase={async (record) => {
               if (!record.draftCase) throw new Error("Prepare and mark the case before publishing.");

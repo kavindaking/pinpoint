@@ -14,6 +14,7 @@ export function Admin({
   onStudy,
   onChanged,
   onBuildCase,
+  onPrepareCase,
   onPublishCase,
 }: {
   initialSection?: "library" | "acquisition";
@@ -22,6 +23,7 @@ export function Admin({
   onStudy: (radCase: RadCase) => void;
   onChanged: () => void;
   onBuildCase: (record: AcquisitionRecord) => void;
+  onPrepareCase: (record: AcquisitionRecord) => Promise<AcquisitionRecord>;
   onPublishCase: (record: AcquisitionRecord) => Promise<AcquisitionRecord>;
 }) {
   const [checking, setChecking] = useState(true);
@@ -99,6 +101,7 @@ export function Admin({
     return (
       <AcquisitionQueue
         onBuildCase={onBuildCase}
+        onPrepareCase={onPrepareCase}
         onPublishCase={onPublishCase}
         onLibrary={() => setSection("library")}
         onSignOut={async () => {

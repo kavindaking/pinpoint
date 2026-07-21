@@ -87,12 +87,14 @@ function CandidateEditor({
   onSaved,
   onCancel,
   onBuildCase,
+  onPrepareCase,
   onPublishCase,
 }: {
   initial: AcquisitionRecord | null;
   onSaved: (record: AcquisitionRecord) => void;
   onCancel: () => void;
   onBuildCase: (record: AcquisitionRecord) => void;
+  onPrepareCase: (record: AcquisitionRecord) => Promise<AcquisitionRecord>;
   onPublishCase: (record: AcquisitionRecord) => Promise<AcquisitionRecord>;
 }) {
   const [draft, setDraft] = useState<AcquisitionDraft | AcquisitionRecord>(() =>
@@ -103,6 +105,7 @@ function CandidateEditor({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [history, setHistory] = useState<AcquisitionRecord[]>([]);
   const checked = Object.values(draft.checks).filter(Boolean).length;
   const ready = checked === Object.keys(draft.checks).length;
@@ -339,6 +342,26 @@ function CandidateEditor({
           />
         </Field>
 
+        {draft.preparedMedia && (
+          <div className="rounded-(--radius-ctl) border border-line bg-surface-2 px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium">Image prepared in Pinpoint</p>
+              <span className={`font-mono text-xs ${draft.preparedMedia.mediaQa.status === "warning" ? "text-[#d6a03d]" : "text-hit"}`}>
+                {draft.preparedMedia.mediaQa.status.toUpperCase()}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-ink-dim">
+              {(draft.preparedMedia.mediaQa.totalBytes / 1024 / 1024).toFixed(1)} MB
+              {draft.preparedMedia.mediaQa.minWidth && draft.preparedMedia.mediaQa.minHeight
+                ? ` · ${draft.preparedMedia.mediaQa.minWidth}×${draft.preparedMedia.mediaQa.minHeight}px`
+                : ""}
+            </p>
+            {draft.preparedMedia.mediaQa.warnings.map((message) => (
+              <p key={message} className="mt-1 text-xs text-[#d6a03d]">{message}</p>
+            ))}
+          </div>
+        )}
+
         {initial && (
           <div className="border-t border-line pt-4">
             <p className="mb-3 text-xs font-medium uppercase tracking-[0.14em] text-ink-faint">Audit history</p>
@@ -350,7 +373,7 @@ function CandidateEditor({
                     <span className="font-mono text-ink-faint">{new Date(version.updatedAt).toLocaleString()}</span>
                   </div>
                   <p className="mt-1 text-ink-faint">
-                    {completedCheckCount(version)}/8 gates · {version.draftCase ? "case draft saved" : "no case draft"}{version.libraryCaseId ? " · published" : ""}
+                    {completedCheckCount(version)}/8 gates · {version.draftCase ? "case draft saved" : version.preparedMedia ? "image prepared" : "no case draft"}{version.libraryCaseId ? " · published" : ""}
                   </p>
                 </div>
               ))}
@@ -369,9 +392,30 @@ function CandidateEditor({
             {saving ? <CircleNotch size={15} className="animate-spin" /> : <FloppyDisk size={15} />}
             {saving ? "Saving…" : "Save candidate"}
           </Button>
-          {initial && authoringReady(initial) && (
+          {initial && !initial.draftCase && !initial.preparedMedia && initial.assetUrl && initial.status !== "rejected" && (
+            <Button
+              disabled={preparing}
+              onClick={async () => {
+                setPreparing(true);
+                setError(null);
+                try {
+                  const prepared = await onPrepareCase(initial);
+                  onSaved(prepared);
+                  onBuildCase(prepared);
+                } catch (cause) {
+                  setError(cause instanceof Error ? cause.message : "Could not prepare this image.");
+                } finally {
+                  setPreparing(false);
+                }
+              }}
+            >
+              {preparing ? <CircleNotch size={15} className="animate-spin" /> : <DownloadSimple size={15} />}
+              {preparing ? "Preparing…" : "Prepare in Pinpoint"}
+            </Button>
+          )}
+          {initial && (initial.draftCase || initial.preparedMedia || (authoringReady(initial) && !initial.assetUrl)) && (
             <Button onClick={() => onBuildCase(initial)}>
-              <FilePlus size={15} /> {initial.draftCase ? "Edit case draft" : "Prepare case draft"}
+              <FilePlus size={15} /> {initial.draftCase ? "Edit case draft" : initial.preparedMedia ? "Mark and finalise" : "Prepare case draft"}
             </Button>
           )}
           {initial && initial.status === "approved" && publicationReady(initial) && initial.draftCase && (
@@ -426,11 +470,13 @@ export function AcquisitionQueue({
   onLibrary,
   onSignOut,
   onBuildCase,
+  onPrepareCase,
   onPublishCase,
 }: {
   onLibrary: () => void;
   onSignOut: () => void | Promise<void>;
   onBuildCase: (record: AcquisitionRecord) => void;
+  onPrepareCase: (record: AcquisitionRecord) => Promise<AcquisitionRecord>;
   onPublishCase: (record: AcquisitionRecord) => Promise<AcquisitionRecord>;
 }) {
   const [records, setRecords] = useState<AcquisitionRecord[]>([]);
@@ -660,6 +706,9 @@ export function AcquisitionQueue({
                   </div>
                   <div className="mt-3 flex items-center gap-2 border-t border-line pt-3 text-xs text-ink-faint">
                     <LinkSimple size={13} /> {record.licence}
+                    {record.draftCase ? <span className="text-hit">Marked draft saved</span>
+                      : record.preparedMedia ? <span className="text-accent">Image ready to mark</span>
+                        : null}
                     {record.reviewer && <span className="ml-auto">Reviewer: {record.reviewer}</span>}
                   </div>
                 </button>
@@ -684,6 +733,7 @@ export function AcquisitionQueue({
               setEditing(saved);
             }}
             onBuildCase={onBuildCase}
+            onPrepareCase={onPrepareCase}
             onPublishCase={onPublishCase}
           />
         )}

@@ -1,4 +1,4 @@
-import type { Difficulty, Modality, RadCase, Subspecialty } from "../types";
+import type { Difficulty, MediaQaReport, Modality, RadCase, Subspecialty } from "../types";
 
 export const ACQUISITION_STATUSES = [
   "candidate",
@@ -34,6 +34,13 @@ export interface AcquisitionChecks {
   regionReviewed: boolean;
 }
 
+export interface AcquisitionPreparedMedia {
+  imageUrl: string;
+  sourceAssetUrl: string;
+  preparedAt: string;
+  mediaQa: MediaQaReport;
+}
+
 export interface AcquisitionRecord {
   id: string;
   finding: string;
@@ -53,6 +60,7 @@ export interface AcquisitionRecord {
   reviewer?: string;
   notes?: string;
   libraryCaseId?: string;
+  preparedMedia?: AcquisitionPreparedMedia;
   draftCase?: RadCase;
   checks: AcquisitionChecks;
   createdAt: string;
@@ -123,6 +131,26 @@ export async function saveAcquisitionBatch(records: AcquisitionDraft[]): Promise
   });
   if (!response.ok) throw new Error(await responseError(response));
   return ((await response.json()) as { records?: AcquisitionRecord[] }).records ?? [];
+}
+
+export async function prepareAcquisitionMedia(
+  record: Pick<AcquisitionRecord, "id" | "assetUrl" | "modality">,
+): Promise<AcquisitionPreparedMedia> {
+  if (!record.assetUrl) throw new Error("Add a direct original-file URL before preparing this candidate.");
+  const response = await fetch("/api/admin-acquisition-prepare", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      candidateId: record.id,
+      assetUrl: record.assetUrl,
+      modality: record.modality,
+    }),
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+  const prepared = ((await response.json()) as { preparedMedia?: AcquisitionPreparedMedia }).preparedMedia;
+  if (!prepared) throw new Error("The server did not confirm the prepared image.");
+  return prepared;
 }
 
 export async function deleteAcquisition(id: string): Promise<void> {
