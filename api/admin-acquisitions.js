@@ -154,6 +154,7 @@ function sanitizeRecord(value, existing = null) {
     ),
     reviewer: boundedText(value.reviewer, 160, true),
     notes: boundedText(value.notes, 4000, true),
+    libraryCaseId: boundedText(value.libraryCaseId, 160, true),
     checks,
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),

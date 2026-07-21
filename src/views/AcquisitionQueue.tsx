@@ -63,10 +63,12 @@ function CandidateEditor({
   initial,
   onSaved,
   onCancel,
+  onBuildCase,
 }: {
   initial: AcquisitionRecord | null;
   onSaved: (record: AcquisitionRecord) => void;
   onCancel: () => void;
+  onBuildCase: (record: AcquisitionRecord) => void;
 }) {
   const [draft, setDraft] = useState<AcquisitionDraft | AcquisitionRecord>(() =>
     initial ? { ...initial, checks: { ...initial.checks } } : emptyDraft(),
@@ -316,6 +318,11 @@ function CandidateEditor({
             {saving ? <CircleNotch size={15} className="animate-spin" /> : <FloppyDisk size={15} />}
             {saving ? "Saving…" : "Save candidate"}
           </Button>
+          {initial && initial.status === "approved" && publicationReady(initial) && (
+            <Button variant="primary" onClick={() => onBuildCase(initial)}>
+              <FilePlus size={15} /> {initial.libraryCaseId ? "Rebuild library case" : "Build library case"}
+            </Button>
+          )}
           {initial &&
             (confirmDelete ? (
               <>
@@ -351,9 +358,11 @@ function CandidateEditor({
 export function AcquisitionQueue({
   onLibrary,
   onSignOut,
+  onBuildCase,
 }: {
   onLibrary: () => void;
   onSignOut: () => void | Promise<void>;
+  onBuildCase: (record: AcquisitionRecord) => void;
 }) {
   const [records, setRecords] = useState<AcquisitionRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -526,6 +535,7 @@ export function AcquisitionQueue({
               });
               setEditing(saved);
             }}
+            onBuildCase={onBuildCase}
           />
         )}
       </div>

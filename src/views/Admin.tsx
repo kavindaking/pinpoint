@@ -5,17 +5,20 @@ import type { RadCase } from "../types";
 import { adminLogin, adminLogout, adminSession } from "../lib/admin";
 import { Cases } from "./Cases";
 import { AcquisitionQueue } from "./AcquisitionQueue";
+import type { AcquisitionRecord } from "../lib/acquisition";
 
 export function Admin({
   cases,
   onEdit,
   onStudy,
   onChanged,
+  onBuildCase,
 }: {
   cases: RadCase[];
   onEdit: (radCase: RadCase) => void;
   onStudy: (radCase: RadCase) => void;
   onChanged: () => void;
+  onBuildCase: (record: AcquisitionRecord) => void;
 }) {
   const [checking, setChecking] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
@@ -91,6 +94,7 @@ export function Admin({
   if (section === "acquisition") {
     return (
       <AcquisitionQueue
+        onBuildCase={onBuildCase}
         onLibrary={() => setSection("library")}
         onSignOut={async () => {
           await adminLogout();

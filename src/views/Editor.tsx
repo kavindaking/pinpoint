@@ -322,6 +322,7 @@ export function Editor({
         posterUrl: replacingExisting ? undefined : existing?.posterUrl,
         posterBlob: hasDicom ? dicomPoster : replacingExisting ? undefined : existing?.posterBlob,
         credit: credit.trim() || undefined,
+        creditUrl: existing?.creditUrl,
         seed: existing?.seed,
         cloud: replacingExisting ? undefined : existing?.cloud,
         createdAt: existing?.createdAt ?? Date.now(),

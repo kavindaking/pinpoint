@@ -52,6 +52,7 @@ export interface AcquisitionRecord {
   targetDifficulty: Difficulty;
   reviewer?: string;
   notes?: string;
+  libraryCaseId?: string;
   checks: AcquisitionChecks;
   createdAt: string;
   updatedAt: string;

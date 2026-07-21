@@ -36,6 +36,8 @@ import {
 import { useAuth } from "./lib/auth";
 import { AccountMenu } from "./components/AccountMenu";
 import { deleteCloudCase, loadCloudCases, syncCaseToCloud } from "./lib/r2";
+import { loadPublishedLibraryCases, publishLibraryCase } from "./lib/libraryCases";
+import { saveAcquisition, type AcquisitionRecord } from "./lib/acquisition";
 
 type Route =
   | { view: "landing" }
@@ -45,7 +47,7 @@ type Route =
   | { view: "library" }
   | { view: "personal" }
   | { view: "admin" }
-  | { view: "editor"; existing: RadCase | null; back: "personal" | "admin" }
+  | { view: "editor"; existing: RadCase | null; back: "personal" | "admin"; acquisition?: AcquisitionRecord }
   | { view: "study"; startAt: number; back: "library" | "personal" | "admin" }
   | { view: "viewer" }
   | { view: "stats" };
@@ -114,6 +116,7 @@ export default function App() {
       ? localCases.filter((radCase) => radCase.seed)
       : localCases;
     const byId = new Map(visibleLocalCases.map((radCase) => [radCase.id, radCase]));
+    for (const radCase of await loadPublishedLibraryCases()) byId.set(radCase.id, radCase);
     if (auth.user) {
       try {
         const cloudCases = await loadCloudCases();
@@ -423,6 +426,24 @@ export default function App() {
               });
             }}
             onChanged={() => void refreshCases()}
+            onBuildCase={(record) => {
+              const published = record.libraryCaseId
+                ? cases.find((radCase) => radCase.id === record.libraryCaseId)
+                : undefined;
+              const bodyRegion = record.subspecialty === "Abdominal" ? "Abdomen"
+                : record.subspecialty === "Neuro" || record.subspecialty === "Head & Neck" ? "Head"
+                  : record.subspecialty === "MSK" ? "Upper limb" : "Chest";
+              setRoute({
+                view: "editor", back: "admin", acquisition: record,
+                existing: published ?? {
+                  id: record.libraryCaseId ?? `library-${record.id.replace(/^candidate-/, "")}`,
+                  title: record.finding, explanation: "", modality: record.modality,
+                  bodyRegion, subspecialty: record.subspecialty, difficulty: record.targetDifficulty,
+                  regions: [], credit: record.attribution,
+                  creditUrl: record.sourceUrl, seed: true, createdAt: Date.now(),
+                },
+              });
+            }}
           />
         )}
         {route.view === "editor" && (
@@ -430,8 +451,16 @@ export default function App() {
             existing={route.existing}
             onSave={async (c) => {
               if (route.back === "admin") {
-                const saved = await saveGlobalCaseOverride(c);
-                setCases((current) => applyGlobalCaseOverride(current, saved));
+                if (route.acquisition || c.id.startsWith("library-")) {
+                  const published = await publishLibraryCase(c);
+                  if (route.acquisition) {
+                    await saveAcquisition({ ...route.acquisition, libraryCaseId: published.id });
+                  }
+                  setCases((current) => [...current.filter((item) => item.id !== published.id), published]);
+                } else {
+                  const saved = await saveGlobalCaseOverride(c);
+                  setCases((current) => applyGlobalCaseOverride(current, saved));
+                }
                 setRoute({ view: "admin" });
               } else {
                 if (auth.user) {
