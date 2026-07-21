@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const MAX_SOURCE_IMAGE_BYTES = 64 * 1024 * 1024;
+export const MAX_BROWSER_FALLBACK_BYTES = 3 * 1024 * 1024;
 const MAX_REDIRECTS = 4;
 const ALLOWED_SOURCE_HOSTS = new Set([
   "commons.wikimedia.org",
@@ -70,6 +71,21 @@ export async function readLimitedBody(response, limit = MAX_SOURCE_IMAGE_BYTES) 
   }
   if (!total) throw new Error("The source image response was empty.");
   return Buffer.concat(chunks, total);
+}
+
+export function decodeBrowserSourceImage(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+    throw new Error("The browser fallback image was invalid.");
+  }
+  const estimatedBytes = Math.floor((value.length * 3) / 4);
+  if (estimatedBytes > MAX_BROWSER_FALLBACK_BYTES) {
+    throw new Error("The browser fallback image exceeds the 3 MB limit.");
+  }
+  const bytes = Buffer.from(value, "base64");
+  if (!bytes.length || bytes.length > MAX_BROWSER_FALLBACK_BYTES) {
+    throw new Error("The browser fallback image was empty or too large.");
+  }
+  return bytes;
 }
 
 function pngDetails(bytes) {

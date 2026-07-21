@@ -137,7 +137,7 @@ export async function prepareAcquisitionMedia(
   record: Pick<AcquisitionRecord, "id" | "assetUrl" | "modality">,
 ): Promise<AcquisitionPreparedMedia> {
   if (!record.assetUrl) throw new Error("Add a direct original-file URL before preparing this candidate.");
-  const response = await fetch("/api/admin-acquisition-prepare", {
+  const requestPreparation = (browserSourceBase64?: string) => fetch("/api/admin-acquisition-prepare", {
     method: "POST",
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
@@ -145,8 +145,31 @@ export async function prepareAcquisitionMedia(
       candidateId: record.id,
       assetUrl: record.assetUrl,
       modality: record.modality,
+      browserSourceBase64,
     }),
   });
+  let response = await requestPreparation();
+  if (!response.ok) {
+    const message = await responseError(response);
+    if (!message.includes("(429)")) throw new Error(message);
+
+    const source = await fetch(record.assetUrl, { cache: "no-store", mode: "cors" });
+    if (!source.ok) throw new Error(`The source image could not be downloaded (${source.status}).`);
+    const declaredBytes = Number(source.headers.get("content-length") ?? 0);
+    const maxFallbackBytes = 3 * 1024 * 1024;
+    if (declaredBytes > maxFallbackBytes) {
+      throw new Error("Wikimedia rate-limited the server and this image is too large for the browser fallback.");
+    }
+    const bytes = new Uint8Array(await source.arrayBuffer());
+    if (!bytes.length || bytes.length > maxFallbackBytes) {
+      throw new Error("The browser fallback image is empty or exceeds 3 MB.");
+    }
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    response = await requestPreparation(btoa(binary));
+  }
   if (!response.ok) throw new Error(await responseError(response));
   const prepared = ((await response.json()) as { preparedMedia?: AcquisitionPreparedMedia }).preparedMedia;
   if (!prepared) throw new Error("The server did not confirm the prepared image.");

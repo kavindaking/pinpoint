@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   allowedSourceUrl,
+  decodeBrowserSourceImage,
   inspectSourceImage,
   sourceImageQa,
 } from "../server/source-image.js";
@@ -21,6 +22,12 @@ test("allows only approved Wikimedia Commons source hosts", () => {
   );
   assert.throws(() => allowedSourceUrl("http://commons.wikimedia.org/image.jpg"), /HTTPS/);
   assert.throws(() => allowedSourceUrl("https://user@commons.wikimedia.org/image.jpg"), /connection details/);
+});
+
+test("validates browser fallback image payloads", () => {
+  assert.deepEqual(decodeBrowserSourceImage(Buffer.from("image bytes").toString("base64")), Buffer.from("image bytes"));
+  assert.throws(() => decodeBrowserSourceImage("not base64!"), /invalid/);
+  assert.throws(() => decodeBrowserSourceImage("A".repeat(4 * 1024 * 1024 + 4)), /3 MB/);
 });
 
 test("detects PNG dimensions from the downloaded bytes", () => {

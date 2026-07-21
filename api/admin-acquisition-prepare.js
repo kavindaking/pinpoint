@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { put } from "@vercel/blob";
 import { hasSameOrigin, isAdminRequest } from "../server/admin-auth.js";
 import {
+  allowedSourceUrl,
+  decodeBrowserSourceImage,
   fetchAllowedSourceImage,
   inspectSourceImage,
   readLimitedBody,
@@ -32,8 +34,17 @@ export default async function handler(req, res) {
     if (!/^candidate-[a-z0-9-]+$/i.test(candidateId)) throw new Error("Invalid candidate identifier.");
     if (!MODALITIES.has(body.modality)) throw new Error("Invalid candidate modality.");
 
-    const { response, finalUrl } = await fetchAllowedSourceImage(body.assetUrl);
-    const bytes = await readLimitedBody(response);
+    let bytes;
+    let finalUrl;
+    if (body.browserSourceBase64) {
+      const sourceUrl = allowedSourceUrl(body.assetUrl);
+      bytes = decodeBrowserSourceImage(body.browserSourceBase64);
+      finalUrl = sourceUrl.toString();
+    } else {
+      const fetched = await fetchAllowedSourceImage(body.assetUrl);
+      bytes = await readLimitedBody(fetched.response);
+      finalUrl = fetched.finalUrl;
+    }
     const details = inspectSourceImage(bytes);
     const mediaQa = sourceImageQa(bytes, details, body.modality);
     const libraryId = `library-${candidateId.replace(/^candidate-/, "")}`;
