@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
   CircleNotch,
+  DownloadSimple,
   FilePlus,
   FloppyDisk,
   LinkSimple,
   SignOut,
   Trash,
+  UploadSimple,
   Warning,
 } from "../components/icons";
 import { Button, Field, Panel, Select, inputClass } from "../components/ui";
@@ -22,11 +24,14 @@ import {
   loadAcquisitionHistory,
   publicationReady,
   saveAcquisition,
+  saveAcquisitionBatch,
   type AcquisitionDraft,
   type AcquisitionRecord,
   type AcquisitionStatus,
 } from "../lib/acquisition";
 import { DIFFICULTIES, MODALITIES, SUBSPECIALTIES } from "../types";
+import { acquisitionTemplateCsv, parseAcquisitionImport } from "../lib/acquisitionImport";
+import { HIGH_YIELD_TARGETS } from "../data/curriculumTargets";
 
 const STATUS_LABEL: Record<AcquisitionStatus, string> = {
   candidate: "Candidate",
@@ -60,6 +65,22 @@ const emptyDraft = (): AcquisitionDraft => ({
   targetDifficulty: "medium",
   checks: { ...EMPTY_ACQUISITION_CHECKS },
 });
+
+function downloadText(name: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a"); link.href = url; link.download = name; link.click();
+  URL.revokeObjectURL(url);
+}
+
+function sourcingPlanCsv() {
+  const header = acquisitionTemplateCsv().trimEnd();
+  const quote = (value: string) => `"${value.replaceAll('"', '""')}"`;
+  const rows = HIGH_YIELD_TARGETS.map((target) => [
+    target.finding, "", "", "", "", "unverified", "", "", target.modality,
+    target.subspecialty, target.difficulty, "Pinpoint high-yield curriculum", "", "", "",
+  ].map((value) => quote(value)).join(","));
+  return `${header}\n${rows.join("\n")}\n`;
+}
 
 function CandidateEditor({
   initial,
@@ -417,6 +438,10 @@ export function AcquisitionQueue({
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<AcquisitionStatus | "all">("all");
   const [editing, setEditing] = useState<AcquisitionRecord | "new" | null>(null);
+  const [batchPreview, setBatchPreview] = useState<AcquisitionDraft[]>([]);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const importInput = useRef<HTMLInputElement>(null);
 
   const refresh = async () => {
     setLoading(true);
@@ -439,6 +464,9 @@ export function AcquisitionQueue({
     [filter, records],
   );
   const readyCount = records.filter(publicationReady).length;
+  const coveredTargets = HIGH_YIELD_TARGETS.filter((target) =>
+    records.some((record) => record.status !== "rejected" && record.finding.toLowerCase() === target.finding.toLowerCase()),
+  ).length;
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8">
@@ -456,11 +484,64 @@ export function AcquisitionQueue({
           <Button variant="primary" onClick={() => setEditing("new")}>
             <FilePlus size={15} /> Add candidate
           </Button>
+          <Button onClick={() => importInput.current?.click()}>
+            <UploadSimple size={15} /> Batch import
+          </Button>
+          <Button onClick={() => downloadText("pinpoint-acquisition-template.csv", acquisitionTemplateCsv())}>
+            <DownloadSimple size={15} /> CSV template
+          </Button>
+          <input
+            ref={importInput}
+            type="file"
+            accept=".csv,.json,text/csv,application/json"
+            className="hidden"
+            onChange={async (event) => {
+              const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
+              if (!file) return;
+              setBatchError(null);
+              try { setBatchPreview(parseAcquisitionImport(await file.text(), file.name)); }
+              catch (cause) { setBatchPreview([]); setBatchError(cause instanceof Error ? cause.message : "Could not read this import."); }
+            }}
+          />
           <Button onClick={() => void onSignOut()}>
             <SignOut size={15} /> Sign out
           </Button>
         </div>
       </div>
+
+      {(batchPreview.length > 0 || batchError) && (
+        <Panel className="mb-5 p-5">
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">Batch import preview</p>
+              {batchError ? <p className="mt-1 text-sm text-miss">{batchError}</p> : (
+                <>
+                  <p className="mt-1 text-sm text-ink-dim">{batchPreview.length} validated candidates are ready to enter the acquisition queue.</p>
+                  <p className="mt-2 truncate text-xs text-ink-faint">{batchPreview.slice(0, 5).map((item) => item.finding).join(" · ")}{batchPreview.length > 5 ? " …" : ""}</p>
+                </>
+              )}
+            </div>
+            {batchPreview.length > 0 && (
+              <Button
+                variant="primary"
+                disabled={batchBusy}
+                onClick={async () => {
+                  setBatchBusy(true); setBatchError(null);
+                  try {
+                    const imported = await saveAcquisitionBatch(batchPreview);
+                    setRecords((current) => [...imported, ...current]); setBatchPreview([]);
+                  } catch (cause) { setBatchError(cause instanceof Error ? cause.message : "Could not import candidates."); }
+                  finally { setBatchBusy(false); }
+                }}
+              >
+                {batchBusy ? <CircleNotch size={15} className="animate-spin" /> : <UploadSimple size={15} />}
+                Import candidates
+              </Button>
+            )}
+            <Button onClick={() => { setBatchPreview([]); setBatchError(null); }}>Cancel</Button>
+          </div>
+        </Panel>
+      )}
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Panel className="p-4">
@@ -484,6 +565,25 @@ export function AcquisitionQueue({
           <p className="text-xs text-ink-faint">Rejected</p>
         </Panel>
       </div>
+
+      <Panel className="mb-5 p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <div>
+            <p className="font-medium">High-yield curriculum coverage</p>
+            <p className="mt-1 text-sm text-ink-dim">{coveredTargets}/{HIGH_YIELD_TARGETS.length} target findings have active acquisition records.</p>
+          </div>
+          <Button className="ml-auto" onClick={() => downloadText("pinpoint-high-yield-sourcing-plan.csv", sourcingPlanCsv())}>
+            <DownloadSimple size={15} /> Download sourcing plan
+          </Button>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+          {SUBSPECIALTIES.map((subspecialty) => {
+            const targets = HIGH_YIELD_TARGETS.filter((target) => target.subspecialty === subspecialty);
+            const covered = targets.filter((target) => records.some((record) => record.status !== "rejected" && record.finding.toLowerCase() === target.finding.toLowerCase())).length;
+            return <div key={subspecialty} className="rounded-(--radius-ctl) border border-line px-3 py-2"><p className="text-xs text-ink-dim">{subspecialty}</p><p className="mt-1 font-mono text-sm">{covered}/{targets.length}</p></div>;
+          })}
+        </div>
+      </Panel>
 
       <div className="mb-5 flex flex-wrap gap-2">
         <button

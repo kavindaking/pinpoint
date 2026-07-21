@@ -114,6 +114,17 @@ export async function saveAcquisition(
   return saved;
 }
 
+export async function saveAcquisitionBatch(records: AcquisitionDraft[]): Promise<AcquisitionRecord[]> {
+  const response = await fetch("/api/admin-acquisitions", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ records }),
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+  return ((await response.json()) as { records?: AcquisitionRecord[] }).records ?? [];
+}
+
 export async function deleteAcquisition(id: string): Promise<void> {
   const response = await fetch("/api/admin-acquisitions", {
     method: "DELETE",

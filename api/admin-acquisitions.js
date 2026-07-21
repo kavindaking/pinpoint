@@ -306,6 +306,19 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body ?? {};
     if (req.method === "POST") {
+      if (Array.isArray(body.records)) {
+        if (body.records.length < 1 || body.records.length > 100) throw new Error("Import between 1 and 100 candidates at a time.");
+        const records = body.records.map((candidate) => sanitizeRecord(candidate));
+        const existing = await readAll();
+        const seen = new Set(existing.map((record) => record.sourceUrl));
+        for (const record of records) {
+          if (seen.has(record.sourceUrl)) throw new Error(`Duplicate source page: ${record.sourceUrl}`);
+          seen.add(record.sourceUrl);
+        }
+        await Promise.all(records.map((record) => saveVersion(record.id, { version: 1, record })));
+        res.status(201).json({ records });
+        return;
+      }
       const record = sanitizeRecord(body.record);
       await saveVersion(record.id, { version: 1, record });
       res.status(201).json({ record });
